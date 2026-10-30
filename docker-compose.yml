@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vocara-api
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=development
+      - DEBUG=true
+      - DATABASE_URL=postgresql+asyncpg://vocara_user:vocara_password@postgres:5432/vocara_db
+      - REDIS_URL=redis://redis:6379/0
+      - STORAGE_BACKEND=local
+      - LOCAL_STORAGE_DIR=/app/storage_local
+      - INFERENCE_ENGINE_TYPE=fake
+    volumes:
+      - ./src:/app/src
+      - local_storage:/app/storage_local
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vocara-worker
+    command: ["vocara-worker"]
+    environment:
+      - ENVIRONMENT=development
+      - DEBUG=true
+      - DATABASE_URL=postgresql+asyncpg://vocara_user:vocara_password@postgres:5432/vocara_db
+      - REDIS_URL=redis://redis:6379/0
+      - STORAGE_BACKEND=local
+      - LOCAL_STORAGE_DIR=/app/storage_local
+      - INFERENCE_ENGINE_TYPE=fake
+      - WORKER_QUEUE_NAME=jobs:inference
+      - WORKER_POLL_TIMEOUT_SECONDS=2
+    volumes:
+      - ./src:/app/src
+      - local_storage:/app/storage_local
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: vocara-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=vocara_user
+      - POSTGRES_PASSWORD=vocara_password
+      - POSTGRES_DB=vocara_db
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vocara_user -d vocara_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: vocara-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
+  redisdata:
+  local_storage:

@@ -1,0 +1,15 @@
+"""Exports all SQLAlchemy ORM models for registry and migrations."""
+
+from vocara.infrastructure.db.models.api_key import ApiKeyModel
+from vocara.infrastructure.db.models.job import JobModel
+from vocara.infrastructure.db.models.usage import UsageRecordModel
+from vocara.infrastructure.db.models.voice import VoiceModel
+from vocara.infrastructure.db.models.webhook import WebhookModel
+
+__all__ = [
+    "ApiKeyModel",
+    "VoiceModel",
+    "JobModel",
+    "UsageRecordModel",
+    "WebhookModel",
+]
