@@ -3,8 +3,9 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 
 from vocara.api.middleware import (
     CorrelationIdMiddleware,
@@ -41,11 +42,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     """Application factory for Vocara Voice API."""
     cfg = settings or get_settings()
 
+    docs_enabled = cfg.DEBUG or cfg.ENVIRONMENT != "production"
     app = FastAPI(
         title=cfg.PROJECT_NAME,
         version="0.1.0",
-        docs_url="/docs" if cfg.DEBUG else None,
-        redoc_url="/redoc" if cfg.DEBUG else None,
+        docs_url="/docs" if docs_enabled else None,
+        redoc_url="/redoc" if docs_enabled else None,
         lifespan=lifespan,
     )
 
@@ -74,7 +76,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Mount API v1 Routes
     app.include_router(api_v1_router, prefix=cfg.API_V1_PREFIX)
 
-    # Baseline Health Check
+    # Root & Baseline Health Check
+    @app.get("/", include_in_schema=False, response_model=None)
+    async def root() -> Response:
+        if docs_enabled:
+            return RedirectResponse(url="/docs")
+        return Response(content='{"status":"healthy"}', media_type="application/json")
+
     @app.get("/health", tags=["System"])
     async def health_check() -> dict[str, str]:
         return {

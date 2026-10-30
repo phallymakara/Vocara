@@ -19,7 +19,7 @@ class Settings(BaseSettings):
 
     # Environment
     ENVIRONMENT: Literal["development", "testing", "production"] = "development"
-    DEBUG: bool = False
+    DEBUG: bool = True
     API_V1_PREFIX: str = "/api/v1"
     PROJECT_NAME: str = "Vocara Voice API Platform"
 
