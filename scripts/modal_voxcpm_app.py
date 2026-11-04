@@ -9,7 +9,17 @@ import modal
 # 1. Define Modal App
 app = modal.App("vocara-voxcpm")
 
-# 2. Define Container Image with PyTorch & VoxCPM
+
+def download_model():
+    """Pre-download model weights into container image layer."""
+    from voxcpm import VoxCPM
+
+    print("Pre-downloading VoxCPM 2 weights into image...")
+    VoxCPM.from_pretrained("openbmb/VoxCPM2", load_denoiser=False)
+    print("VoxCPM 2 weights cached successfully!")
+
+
+# 2. Define Container Image with PyTorch, VoxCPM & Pre-baked Weights
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .apt_install("git", "ffmpeg")
@@ -22,6 +32,7 @@ image = (
         "torch",
         "transformers",
     )
+    .run_function(download_model)
 )
 
 
