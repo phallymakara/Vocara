@@ -1,199 +1,44 @@
 # Vocara - Voice API Platform
 
-Vocara is a developer-facing Voice API platform for text-to-speech (TTS), consent-verified voice cloning, voice variation design, and voice library management. It provides a unified, secure interface allowing developers to integrate speech capabilities into products without hosting voice AI infrastructure.
+Vocara is a developer-facing Voice API platform designed for speech synthesis, voice cloning, acoustic voice design, and developer integration. It provides a secure, unified interface that allows developers and organizations to integrate voice capabilities into applications and agentic workflows without managing complex infrastructure.
 
-## Project Structure
+## Platform Capabilities
 
-```text
-Vocara/
-├── backend/                  # Python FastAPI Backend
-│   ├── src/vocara/           # Hexagonal application source
-│   ├── migrations/           # Alembic database migrations
-│   ├── tests/                # Pytest unit, integration, and API test suites
-│   ├── worker/               # Background queue worker
-│   ├── pyproject.toml        # Backend dependencies and CLI entrypoints
-│   ├── Dockerfile            # Container build
-│   └── .env.example          # Backend configuration template
-├── frontend/                 # React 19 + TypeScript + Vite Web Console
-│   ├── src/                  # Components, pages, typed API client
-│   ├── package.json          # Frontend dependencies
-│   └── vite.config.ts        # Vite configuration and proxy
-├── docker-compose.yml        # Multi-container local deployment
-└── Makefile                  # Task automation shortcuts
-```
+### 1. Neural Text-to-Speech
+Synthesize natural, high-fidelity speech across multiple languages, including Khmer and English. The platform provides real-time streaming audio responses for immediate playback as well as asynchronous job processing for long-form content.
 
-## Prerequisites
+### 2. Consent-Verified Voice Cloning
+Create personalized voice profiles from reference audio recordings. The platform enforces explicit consent verification during registration and generates instant preview audio spoken in the cloned voice.
 
-- Python >= 3.11
-- uv >= 0.4.0
-- Node.js >= 20.0.0
-- npm >= 10.0.0
+### 3. Acoustic Voice Design
+Derive customized voice variations by adjusting pitch, speaking rate, emotional inflections, and expressive styles while preserving original timbre.
 
-## Quick Start
+### 4. Developer Console and Management
+A modern web management interface provides comprehensive developer tools:
+- API key provisioning, active session switching, and revocation.
+- Real-time text-to-speech studio with in-browser audio player and multi-format export.
+- Voice Library management with full voice inspection, editing, and deletion capabilities.
+- Live usage metrics and monthly character quota monitoring.
+- Asynchronous batch job status tracking and signed webhook endpoint registration.
 
-### 1. Start the Backend API
+### 5. Model Context Protocol Integration
+Native support for the Model Context Protocol allows AI assistants, autonomous agents, and developer environments to discover available voices, inspect voice metadata, and generate speech directly through standardized tool and resource interfaces.
 
-```bash
-cd backend
-uv sync --all-extras
-uv run vocara
-```
+## Getting Started
 
-The backend API server will start at `http://127.0.0.1:8002`. Interactive documentation is available at `http://127.0.0.1:8002/docs`.
+### Configuration
+Template configuration files are provided in the backend and frontend directories. To configure your local instance:
+- Copy the backend environment template file to create your active backend configuration, and set your desired database, storage, and service parameters.
+- Copy the frontend environment template file to configure the web console API connection endpoint.
 
-### 2. Start the Frontend Console
+### Backend Application Service
+To run the API service, navigate to the backend directory, install the required dependencies using the environment manager, and start the Vocara service. The service provides interactive documentation through standard web browser endpoints upon startup.
 
-In a separate terminal:
+### Frontend Web Console
+To launch the developer console, navigate to the frontend directory, install the web dependencies, and start the development server. The console will be accessible through your local browser.
 
-```bash
-cd frontend
-npm install
-npm run dev
-```
+### Background Worker Service
+For processing large text documents and asynchronous speech generation tasks, the background worker daemon can be launched alongside the main API server.
 
-The frontend web console will be accessible at `http://localhost:3000`.
-
-### 3. Start the Background Worker (Optional for long-form speech)
-
-```bash
-cd backend
-uv run vocara-worker
-```
-
-## Model Context Protocol (MCP) Integration
-
-Vocara provides native Model Context Protocol (MCP) server support, allowing external AI assistants (Cursor IDE, Claude Desktop, autonomous LLM agents) and external developer services to discover voices and synthesize speech directly.
-
-### Connection Transports
-
-Vocara supports two MCP transports:
-
-1. **Remote SSE Transport (Recommended)**: For network-accessible agents, web services, and Cursor IDE.
-   - Endpoint: `http://localhost:8002/mcp/sse?api_key=voc_YOUR_API_KEY`
-   - Messages: `http://localhost:8002/mcp/messages/`
-2. **Local Stdio Transport**: For Claude Desktop running as a local command.
-   - Command: `uv run vocara-mcp` inside `backend/`
-
----
-
-### Client Configuration
-
-#### 1. Cursor IDE (`.cursor/mcp.json`)
-
-```json
-{
-  "mcpServers": {
-    "vocara": {
-      "url": "http://localhost:8002/mcp/sse?api_key=voc_YOUR_API_KEY"
-    }
-  }
-}
-```
-
-#### 2. Claude Desktop (`claude_desktop_config.json`)
-
-```json
-{
-  "mcpServers": {
-    "vocara": {
-      "command": "uv",
-      "args": [
-        "--directory",
-        "<path-to-vocara>/backend",
-        "run",
-        "vocara-mcp"
-      ],
-      "env": {
-        "VOCARA_API_KEY": "voc_YOUR_API_KEY"
-      }
-    }
-  }
-}
-```
-
-#### 3. Python Client (`mcp` library)
-
-```python
-import asyncio
-from mcp import ClientSession
-from mcp.client.sse import sse_client
-
-async def main():
-    url = "http://localhost:8002/mcp/sse?api_key=voc_YOUR_API_KEY"
-    async with sse_client(url) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-
-            # 1. Discover available voices
-            voices = await session.call_tool("vocara_list_voices", {"language": "km"})
-            print("Voices:", voices)
-
-            # 2. Synthesize speech
-            result = await session.call_tool("vocara_generate_speech", {
-                "text": "សួស្តីពិភពលោក",
-                "voice_id": "voice-sophea-built-in",
-                "output_format": "mp3"
-            })
-            print("Synthesis result:", result)
-
-asyncio.run(main())
-```
-
-#### 4. TypeScript / Node Client (`@modelcontextprotocol/sdk`)
-
-```typescript
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
-
-async function main() {
-  const transport = new SSEClientTransport(
-    new URL("http://localhost:8002/mcp/sse?api_key=voc_YOUR_API_KEY")
-  );
-
-  const client = new Client(
-    { name: "vocara-agent", version: "1.0.0" },
-    { capabilities: {} }
-  );
-
-  await client.connect(transport);
-
-  // List voices
-  const voices = await client.callTool({
-    name: "vocara_list_voices",
-    arguments: { language: "all" },
-  });
-  console.log("Vocara voices:", voices);
-}
-
-main().catch(console.error);
-```
-
----
-
-### Exposed MCP Tools & Resources
-
-| Name | Type | Description | Key Parameters |
-| :--- | :--- | :--- | :--- |
-| `vocara_list_voices` | Tool | List all accessible voices (built-in, designed, cloned) | `language` (e.g. `'km'`, `'en'`, `'all'`), `voice_type` |
-| `vocara_get_voice_details` | Tool | Retrieve full metadata and acoustic modifiers for a voice | `voice_id` (string) |
-| `vocara_preview_voice` | Tool | Retrieve base64-encoded WAV audio preview sample | `voice_id` (string) |
-| `vocara_generate_speech` | Tool | Synthesize text into high-fidelity neural speech | `text`, `voice_id`, `speed` (default 1.0), `output_format` (`mp3`/`wav`) |
-| `vocara://voices/catalog` | Resource | Dynamic live JSON catalog of all available voices | URI resource |
-
----
-
-## Running Tests
-
-Execute test suite inside the backend directory:
-
-```bash
-cd backend
-uv run pytest
-```
-
-Execute frontend build check:
-
-```bash
-cd frontend
-npm run build
-```
+### Quality and Verification
+Automated test suites covering unit logic, repository access, service coordination, and API endpoints are maintained in the backend directory. Frontend production assets can be verified by executing the standard web build pipeline.

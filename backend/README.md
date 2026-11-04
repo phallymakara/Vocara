@@ -1,35 +1,25 @@
 # Vocara Backend Service
 
-Vocara is a developer-facing Voice API platform providing real-time and asynchronous text-to-speech (TTS), consent-verified voice cloning, voice variation design, and voice library management.
+The Vocara backend provides the core speech synthesis, voice profile management, key verification, asynchronous task processing, and external protocol integration for the Vocara Voice API Platform.
 
-## Architecture
+## Core Services
 
-Built using Hexagonal Architecture (Ports and Adapters):
-- `src/vocara/domain`: Pure entities, enums, and port interfaces.
-- `src/vocara/services`: Core use-case coordination.
-- `src/vocara/infrastructure`: Database, storage, queue, and inference adapters.
-- `src/vocara/api`: FastAPI HTTP routes, middleware, and request/response validation.
-- `src/vocara/worker`: Background queue worker daemon.
+- Speech Synthesis: Delivers real-time audio streams for interactive requests and orchestrates background job queues for long-form text conversion.
+- Voice Profile Management: Coordinates voice catalog listings, language filtering, audio preview delivery, and consent-verified voice cloning workflows.
+- Developer Security and Metering: Enforces API key authentication, rate limits, monthly character consumption tracking, and multi-tenant isolation.
+- Notification Dispatcher: Delivers signed webhook event notifications with HMAC signatures upon job state changes.
+- AI Agent Connectivity: Hosts standardized tool and resource endpoints allowing external autonomous assistants and developer tools to interact with speech capabilities.
 
-## Local Execution
+## Getting Started
 
-Install dependencies:
-```bash
-uv sync --all-extras
-```
+### Configuration
+Configure your service parameters by setting up the backend environment file based on the provided template file. Supported configurations include database connection URLs, object storage providers, inference engines, and quota thresholds.
 
-Start the API service:
-```bash
-uv run vocara
-```
+### Service Execution
+Install the backend dependencies using the project environment manager, then launch the primary service executable. Once running, the service automatically publishes interactive API documentation accessible via your browser.
 
-Start the background worker:
-```bash
-uv run vocara-worker
-```
+### Background Queue Processing
+When handling batch synthesis operations, start the background worker process. The worker continuously monitors the task queue and processes dispatched audio jobs asynchronously.
 
-Execute tests:
-```bash
-uv run pytest
-```
-
+### Automated Testing
+Comprehensive test coverage is maintained across API routes, business logic, storage adapters, and integration workflows. Tests can be run through the backend environment test command.
