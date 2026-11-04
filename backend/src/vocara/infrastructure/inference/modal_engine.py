@@ -99,8 +99,8 @@ class ModalInferenceEngine(BaseInferenceEngine):
                 "reference_audio_base64": ref_audio_b64,
                 "prompt_audio_base64": ref_audio_b64,
                 "prompt_text": prompt_text,
-                "inference_timesteps": 22,
-                "cfg_value": 1.35,
+                "inference_timesteps": 20,
+                "cfg_value": 1.8,
             }
 
             resp = await client.post(url, json=payload, headers=self._get_headers())
