@@ -1,150 +1,316 @@
-# Vocara - Voice API Platform
+# Vocara
 
-Vocara is a developer-facing Voice API platform designed for speech synthesis, voice cloning, acoustic voice design, and developer integration. It provides a secure, unified interface that allows developers and organizations to integrate voice capabilities into applications and agentic workflows without managing complex infrastructure.
+> High-fidelity neural text-to-speech, consent-verified voice cloning, and AI agent voice integration platform.
 
-## Platform Capabilities
+[![Python Version](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg)](https://fastapi.tiangolo.com/)
+[![Next.js](https://img.shields.io/badge/Next.js-14-black.svg)](https://nextjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-blue.svg)](https://www.typescriptlang.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#contributing)
 
-### 1. Neural Text-to-Speech
-Synthesize natural, high-fidelity speech across multiple languages, including Khmer and English. The platform provides real-time streaming audio responses for immediate playback as well as asynchronous job processing for long-form content.
+---
 
-### 2. Consent-Verified Voice Cloning
-Create personalized voice profiles from reference audio recordings. The platform enforces explicit consent verification during registration and generates instant preview audio spoken in the cloned voice.
+## Table of Contents
 
-### 3. Acoustic Voice Design
-Derive customized voice variations by adjusting pitch, speaking rate, emotional inflections, and expressive styles while preserving original timbre.
+- [About](#about)
+- [Key Features](#key-features)
+- [Prerequisites & Tech Stack](#prerequisites--tech-stack)
+- [Installation](#installation)
+  - [1. Clone Repository](#1-clone-repository)
+  - [2. Backend Setup & Run](#2-backend-setup--run)
+  - [3. Frontend Setup & Run](#3-frontend-setup--run)
+  - [4. Background Worker (Optional)](#4-background-worker-optional)
+- [Usage & Examples](#usage--examples)
+  - [Synthesize Speech via cURL](#synthesize-speech-via-curl)
+  - [Synthesize Speech via Python](#synthesize-speech-via-python)
+  - [Run the Model Context Protocol (MCP) Server](#run-the-model-context-protocol-mcp-server)
+- [Testing](#testing)
+- [Contributing](#contributing)
+- [License](#license)
+- [Contact & Acknowledgements](#contact--acknowledgements)
 
-### 4. Developer Console and Management
-A modern web management interface provides comprehensive developer tools:
-- API key provisioning, active session switching, and revocation.
-- Real-time text-to-speech studio with in-browser audio player and multi-format export.
-- Voice Library management with full voice inspection, editing, and deletion capabilities.
-- Live usage metrics and monthly character quota monitoring.
-- Asynchronous batch job status tracking and signed webhook endpoint registration.
+---
 
-### 5. Model Context Protocol Integration
-Native support for the Model Context Protocol allows AI assistants, autonomous agents, and developer environments to discover available voices, inspect voice metadata, and generate speech directly through standardized tool and resource interfaces.
+## About
 
-## Step-by-Step Setup and Execution Guide
+Vocara is an open-source, developer-facing Voice API platform designed to simplify the generation, customization, and management of synthetic voices. It bridges the gap between state-of-the-art neural speech models and production applications by providing:
 
-Follow the stages below to set up and run the entire Vocara platform locally, from cloning the source code to launching the backend services and developer web console.
+- Unified developer APIs for real-time streaming audio and batch synthesis.
+- Multi-language support with specialized support for languages including Khmer and English.
+- Consent-verified voice cloning workflows ensuring responsible AI usage.
+- Native Model Context Protocol (MCP) tools enabling AI agents and assistants (Claude, Cursor, custom agents) to generate voice natively.
+- An interactive developer web management console with an audio studio, API key lifecycle management, voice library CRUD, and usage analytics.
 
-### Stage 1: Clone the Repository
+---
 
-Clone the project repository to your local system using your preferred Git client:
+## Key Features
 
+- Neural Text-to-Speech: Low-latency streaming audio generation in WAV, MP3, and OGG formats.
+- Consent-Verified Voice Cloning: Create custom voice profiles from reference audio files with instant preview generation.
+- Acoustic Voice Design: Fine-tune pitch, rate, emotion, and vocal style parameters.
+- Voice Library Management: Full create, read, update, and delete (CRUD) capabilities for custom voice profiles.
+- Developer Console: Web-based studio for immediate auditioning, quota monitoring, and API key provisioning.
+- MCP Server Integration: Direct tool and resource discovery for AI coding assistants and autonomous agents.
+- Resilient Architecture: Automatic fallback mechanisms between cloud ZeroGPU inference spaces and local fallback engines.
+
+---
+
+## Prerequisites & Tech Stack
+
+### Prerequisites
+- Python: Version 3.11 or higher
+- Node.js: Version 18.0.0 or higher
+- Package Managers: `uv` (recommended) or `pip` for Python; `npm` for Node.js
+- Git: Version 2.30 or higher
+
+### Tech Stack
+- Backend: FastAPI, SQLAlchemy 2.0 (asyncio), Pydantic v2, Structlog, Edge-TTS, Hugging Face Gradio Client
+- Frontend: Next.js 14 (App Router), React 18, TypeScript, Tailwind CSS, Lucide React
+- Protocols: REST API, Server-Sent Events (SSE), Model Context Protocol (MCP)
+- Storage: SQLite (local development) / PostgreSQL (production), Local file storage / S3
+
+---
+
+## Installation
+
+### 1. Clone Repository
+
+Clone the project from GitHub and navigate to the root directory:
+
+```bash
 git clone https://github.com/phallymakara/Vocara.git
-
-Or if you authenticate using SSH keys:
-
-git clone git@github.com:phallymakara/Vocara.git
-
-Once cloned, navigate into the project root directory:
-
 cd Vocara
+```
 
-### Stage 2: Configure Environment Files
+---
 
-The platform requires environment configurations for both the backend service and the frontend web console.
+### 2. Backend Setup & Run
 
-1. Backend Configuration:
-Navigate to the backend directory. Copy the sample environment file to create your active configuration file:
-- On Linux and macOS: cp .env.example .env
-- On Windows PowerShell: Copy-Item .env.example .env
+Open a terminal window for the backend service:
 
-Open .env in your text editor. The default settings are preconfigured for local development (database file, default port 8002, and local file storage). If you wish to enable cloud-based voice cloning models, add your Hugging Face API token to the HUGGINGFACE_API_KEY variable.
-
-2. Frontend Configuration:
-Navigate to the frontend directory. Copy the sample environment file to create your local frontend configuration file:
-- On Linux and macOS: cp .env.example .env.local
-- On Windows PowerShell: Copy-Item .env.example .env.local
-
-Open .env.local in your text editor and ensure NEXT_PUBLIC_API_BASE_URL is set to your backend API endpoint, such as http://localhost:8002/api/v1.
-
-### Stage 3: Setup and Run the Backend API Service
-
-Prerequisite: Python 3.11 or higher.
-
-1. Navigate to the backend directory:
+**Windows (PowerShell):**
+```powershell
 cd backend
-
-2. Install dependencies:
-Using the uv package manager:
+Copy-Item .env.example .env
 uv sync
-
-Alternatively, using standard Python virtual environments:
-- On Linux and macOS: python3 -m venv .venv && source .venv/bin/activate && pip install -e .
-- On Windows: python -m venv .venv && .venv\Scripts\Activate.ps1 && pip install -e .
-
-3. Start the API service:
-Using uv:
 uv run vocara-api
+```
 
-Alternatively, using Python directly:
+*(Alternative with standard pip):*
+```powershell
+cd backend
+Copy-Item .env.example .env
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -e .
 python -m vocara.main
+```
 
-4. Verify the backend is running:
-The server will start listening at http://localhost:8002. Open your web browser and navigate to:
-- Interactive API Documentation: http://localhost:8002/docs
-- Service Health Check: http://localhost:8002/health
+**macOS / Linux (Bash):**
+```bash
+cd backend
+cp .env.example .env
+uv sync
+uv run vocara-api
+```
 
-Keep this terminal window running to maintain the active backend service.
+*(Alternative with standard pip):*
+```bash
+cd backend
+cp .env.example .env
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+python -m vocara.main
+```
 
-### Stage 4: Setup and Run the Frontend Developer Console
+Once running, the backend service is available at:
+- API Base: `http://localhost:8002`
+- Interactive Swagger Documentation: `http://localhost:8002/docs`
+- Health Check: `http://localhost:8002/health`
 
-Prerequisite: Node.js version 18 or higher and npm.
+---
 
-1. Open a new terminal window and navigate to the frontend directory:
-cd Vocara/frontend
+### 3. Frontend Setup & Run
 
-2. Install Node dependencies:
+Open a second terminal window for the web console:
+
+**Windows (PowerShell):**
+```powershell
+cd frontend
+Copy-Item .env.example .env.local
 npm install
-
-3. Start the development server:
 npm run dev
+```
 
-4. Verify the frontend is running:
-The web console will start on port 3000. Open your web browser and navigate to:
-http://localhost:3000
+**macOS / Linux (Bash):**
+```bash
+cd frontend
+cp .env.example .env.local
+npm install
+npm run dev
+```
 
-The Vocara Developer Console should now load and connect to your local backend API.
+Once running, open your browser and navigate to:
+- Developer Web Console: `http://localhost:3000`
 
-### Stage 5: Run the Background Worker (Optional for Long Batch Tasks)
+---
 
-For processing long-form batch audio jobs and asynchronous queue tasks, run the background worker process.
+### 4. Background Worker (Optional)
 
-1. Open another terminal window and navigate to the backend directory:
-cd Vocara/backend
+If processing long-form batch synthesis jobs or asynchronous webhook deliveries, run the worker daemon in a third terminal:
 
-2. Start the worker daemon:
-Using uv:
+**Windows (PowerShell):**
+```powershell
+cd backend
 uv run vocara-worker
+```
 
-Alternatively, using Python directly:
-python -m vocara.worker
+**macOS / Linux (Bash):**
+```bash
+cd backend
+uv run vocara-worker
+```
 
-The worker will monitor the local queue and execute long-running synthesis jobs in the background.
+---
 
-### Stage 6: First-Time Use and Platform Verification
+## Usage & Examples
 
-Once both the backend and frontend are running, you can test the platform features:
+### Synthesize Speech via cURL
 
-1. Provision an API Key:
-In the web console, navigate to the API Keys tab. Click to create a new API key (for example, named Development Key). Copy and save your secret key, then select it as the active session key.
+Generate an audio stream directly from the command line:
 
-2. Test Real-Time Speech Synthesis:
-Navigate to the Studio tab. Select a voice profile from the dropdown menu, enter sample text in English or Khmer, and click Generate Speech. Use the embedded audio player to listen to or download the generated audio file.
+```bash
+curl -X POST "http://localhost:8002/api/v1/tts" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: voc_live_your_api_key_here" \
+  -d '{
+    "text": "Hello, welcome to Vocara Voice API Platform.",
+    "voice_id": "km-KH-PisethNeural",
+    "speed": 1.0,
+    "format": "mp3"
+  }' \
+  --output output.mp3
+```
 
-3. Explore the Voice Library and Voice Cloning:
-Navigate to the Voice Library tab to browse available voices and listen to sample previews. To clone a new voice, switch to the Clone Voice tab, enter the voice profile details, upload a clean WAV or MP3 audio reference, confirm the consent declaration, and click Clone Voice. The cloned voice will immediately appear in your library with an automatic voice preview.
+---
 
-## Automated Verification
+### Synthesize Speech via Python
 
-To run backend test suites and confirm all system components are operating correctly:
+```python
+import httpx
 
+API_URL = "http://localhost:8002/api/v1/tts"
+API_KEY = "voc_live_your_api_key_here"
+
+payload = {
+    "text": "Welcome to Vocara speech synthesis.",
+    "voice_id": "en-US-JennyNeural",
+    "speed": 1.0,
+    "format": "mp3"
+}
+
+headers = {
+    "Content-Type": "application/json",
+    "X-API-Key": API_KEY
+}
+
+with httpx.Client(timeout=30.0) as client:
+    response = client.post(API_URL, json=payload, headers=headers)
+    response.raise_for_status()
+    with open("synthesized_audio.mp3", "wb") as f:
+        f.write(response.content)
+
+print("Audio saved successfully to synthesized_audio.mp3")
+```
+
+---
+
+### Run the Model Context Protocol (MCP) Server
+
+Vocara can be integrated directly into MCP-compatible clients such as Claude Desktop or Cursor:
+
+```bash
+cd backend
+uv run vocara-mcp
+```
+
+MCP Configuration for Claude Desktop (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "vocara": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/absolute/path/to/Vocara/backend",
+        "run",
+        "vocara-mcp"
+      ]
+    }
+  }
+}
+```
+
+---
+
+## Testing
+
+Run the automated backend test suite covering API endpoints, repositories, services, and MCP tools:
+
+```bash
 cd backend
 uv run pytest
+```
 
-To test the frontend production build pipeline:
+Verify frontend compilation and type checking:
 
+```bash
 cd frontend
 npm run build
+```
+
+---
+
+## Contributing
+
+Contributions from the developer community are welcome. To contribute:
+
+1. Fork the repository.
+2. Create a feature branch:
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+3. Commit your changes with clear, descriptive commit messages:
+   ```bash
+   git commit -m "feat: add support for custom audio format"
+   ```
+4. Push to your branch:
+   ```bash
+   git push origin feature/your-feature-name
+   ```
+5. Open a Pull Request detailing the changes, motivation, and test coverage.
+
+Please ensure all tests pass and code conforms to project styling (`uv run ruff check .` and `npm run lint`) prior to submitting.
+
+---
+
+## License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for complete details.
+
+---
+
+## Contact & Acknowledgements
+
+### Maintainer
+- Makara Phally - [GitHub Profile](https://github.com/phallymakara)
+
+### Acknowledgements
+- [FastAPI](https://fastapi.tiangolo.com/) for the modern, high-performance web framework.
+- [Next.js](https://nextjs.org/) for the developer console frontend interface.
+- [Edge-TTS](https://github.com/rany2/edge-tts) for high-quality speech synthesis capabilities.
+- [Model Context Protocol](https://modelcontextprotocol.io/) for standardizing agentic AI tool interactions.
+- [Hugging Face](https://huggingface.co/) for open model ecosystems and ZeroGPU infrastructure.
