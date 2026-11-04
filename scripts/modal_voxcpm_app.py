@@ -97,8 +97,7 @@ class VoxCPMService:
             print(f"ASR transcription failed: {e}")
             return ""
 
-    @modal.method()
-    def clone(self, req: dict) -> dict:
+    def _clone(self, req: dict) -> dict:
         import base64
         import os
         import tempfile
@@ -162,8 +161,7 @@ class VoxCPMService:
             "prompt_text": prompt_text,
         }
 
-    @modal.method()
-    def synthesize(self, req: dict) -> dict:
+    def _synthesize(self, req: dict) -> dict:
         import base64
         import os
         import tempfile
@@ -242,8 +240,7 @@ class VoxCPMService:
             "duration": duration,
         }
 
-    @modal.method()
-    def design(self, req: dict) -> dict:
+    def _design(self, req: dict) -> dict:
         import base64
         import os
         import tempfile
@@ -276,6 +273,19 @@ class VoxCPMService:
         preview_b64 = base64.b64encode(preview_bytes).decode("utf-8")
         token = f"voxcpm_des_{uuid.uuid4().hex[:12]}"
         return {"feature_token": token, "preview_base64": preview_b64}
+
+    # Modal RPC methods (can be called remotely from Python clients)
+    @modal.method()
+    def clone(self, req: dict) -> dict:
+        return self._clone(req)
+
+    @modal.method()
+    def synthesize(self, req: dict) -> dict:
+        return self._synthesize(req)
+
+    @modal.method()
+    def design(self, req: dict) -> dict:
+        return self._design(req)
 
     # 4. Direct Unified FastAPI ASGI Endpoint inside GPU Container
     @modal.asgi_app(label="vocara-voxcpm-fastapi-app")
@@ -336,17 +346,17 @@ class VoxCPMService:
 
         @web_app.post("/clone")
         def clone_endpoint(req: CloneRequest):
-            # Direct in-memory invocation without RPC serialization hop
-            return self.clone(req.model_dump())
+            # Direct in-memory invocation via internal Python method
+            return self._clone(req.model_dump())
 
         @web_app.post("/synthesize")
         def synthesize_endpoint(req: SynthesizeRequest):
-            # Direct in-memory invocation without RPC serialization hop
-            return self.synthesize(req.model_dump())
+            # Direct in-memory invocation via internal Python method
+            return self._synthesize(req.model_dump())
 
         @web_app.post("/design")
         def design_endpoint(req: DesignRequest):
-            # Direct in-memory invocation without RPC serialization hop
-            return self.design(req.model_dump())
+            # Direct in-memory invocation via internal Python method
+            return self._design(req.model_dump())
 
         return web_app
