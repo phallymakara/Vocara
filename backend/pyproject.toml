@@ -28,6 +28,7 @@ dependencies = [
 
 [project.scripts]
 vocara = "vocara.main:run"
+vocara-api = "vocara.main:run"
 vocara-worker = "vocara.worker.main:run"
 vocara-mcp = "vocara.mcp.cli:run"
 
