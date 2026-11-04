@@ -9,7 +9,8 @@ import structlog
 from vocara.core.exceptions import InferenceServiceError
 from vocara.domain.constants import DEFAULT_PREVIEW_TEXT
 from vocara.domain.entities import Voice
-from vocara.domain.enums import AudioFormat
+from vocara.domain.enums import AudioFormat, VoiceType
+from vocara.domain.ports import BlobStorage
 from vocara.infrastructure.inference.base import BaseInferenceEngine
 from vocara.utils.audio import get_audio_duration_seconds
 
@@ -26,11 +27,15 @@ class ModalInferenceEngine(BaseInferenceEngine):
         timeout_seconds: int = 120,
         max_retries: int = 2,
         http_client: httpx.AsyncClient | None = None,
+        storage: BlobStorage | None = None,
+        fallback_engine: BaseInferenceEngine | None = None,
     ) -> None:
         super().__init__(timeout_seconds=timeout_seconds, max_retries=max_retries)
         self.endpoint_url = endpoint_url
         self.api_token = api_token
         self._client = http_client
+        self.storage = storage
+        self.fallback_engine = fallback_engine
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
@@ -53,8 +58,29 @@ class ModalInferenceEngine(BaseInferenceEngine):
         reference_audio_bytes: bytes | None = None,
     ) -> tuple[bytes, float]:
         """Call remote serverless VoxCPM worker to synthesize speech."""
+        # Fast local fallback for built-in voices without reference audio
+        if voice.voice_type == VoiceType.BUILT_IN and not voice.reference_audio_key and self.fallback_engine:
+            return await self.fallback_engine.generate_speech(
+                text=text,
+                voice=voice,
+                language=language,
+                speed=speed,
+                output_format=output_format,
+            )
+
         if not self.endpoint_url:
             raise InferenceServiceError("Modal inference endpoint URL is not configured.")
+
+        # Download reference audio if voice is cloned
+        ref_audio_b64: str | None = None
+        if reference_audio_bytes:
+            ref_audio_b64 = base64.b64encode(reference_audio_bytes).decode("utf-8")
+        elif self.storage and voice.reference_audio_key:
+            try:
+                raw_ref = await self.storage.download(voice.reference_audio_key)
+                ref_audio_b64 = base64.b64encode(raw_ref).decode("utf-8")
+            except Exception as err:
+                logger.warning("modal_reference_download_failed", key=voice.reference_audio_key, error=str(err))
 
         async def _call() -> tuple[bytes, float]:
             client = await self._get_client()
@@ -68,6 +94,8 @@ class ModalInferenceEngine(BaseInferenceEngine):
                 "output_format": output_format.value,
                 "modifiers": voice.modifiers,
                 "reference_audio_key": voice.reference_audio_key,
+                "reference_audio_base64": ref_audio_b64,
+                "prompt_audio_base64": ref_audio_b64,
             }
 
             resp = await client.post(url, json=payload, headers=self._get_headers())

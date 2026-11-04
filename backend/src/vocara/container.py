@@ -120,6 +120,8 @@ class Container:
                 endpoint_url=self.settings.MODAL_API_ENDPOINT,
                 api_token=self.settings.MODAL_API_TOKEN,
                 timeout_seconds=self.settings.INFERENCE_TIMEOUT_SECONDS,
+                storage=self.storage,
+                fallback_engine=neural_engine,
             )
         elif self.settings.INFERENCE_ENGINE_TYPE == "huggingface":
             self.inference_engine = HuggingFaceInferenceEngine(
