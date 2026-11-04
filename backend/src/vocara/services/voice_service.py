@@ -176,7 +176,7 @@ class VoiceService:
         # (leaves speech, cadence, and timing completely untouched)
         normalized_wav, duration, metrics = preprocess_reference_audio(
             audio_bytes,
-            target_sample_rate=24000,
+            target_sample_rate=48000,
             enable_denoise=enhance_audio,
             enable_normalization=False,
             min_duration=0.5,

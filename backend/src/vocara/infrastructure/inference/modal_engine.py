@@ -101,7 +101,6 @@ class ModalInferenceEngine(BaseInferenceEngine):
                 "prompt_text": prompt_text,
                 "inference_timesteps": 22,
                 "cfg_value": 1.35,
-                "is_continuation": False,
             }
 
             resp = await client.post(url, json=payload, headers=self._get_headers())

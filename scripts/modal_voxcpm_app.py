@@ -63,7 +63,7 @@ class VoxCPMService:
         device = "cuda" if torch.cuda.is_available() else "cpu"
         print(f"Loading VoxCPM 2 on {device}...")
         self.model = VoxCPM.from_pretrained("openbmb/VoxCPM2", load_denoiser=False)
-        self.sample_rate = getattr(getattr(self.model, "tts_model", None), "sample_rate", 24000)
+        self.sample_rate = getattr(getattr(self.model, "tts_model", None), "sample_rate", 48000)
         print(f"VoxCPM 2 ready! Native sample rate: {self.sample_rate}Hz")
 
         # Load ASR pipeline on GPU for automatic transcript extraction
@@ -107,15 +107,14 @@ class VoxCPMService:
         audio_b64 = req.get("audio_base64", "")
         preview_text = req.get("preview_text") or "Hello! This is a preview of your cloned voice."
         prompt_text = (req.get("prompt_text") or "").strip()
-        language = (req.get("language") or "en").lower()
 
         ref_bytes = base64.b64decode(audio_b64)
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as ref_tmp:
             ref_tmp.write(ref_bytes)
             ref_path = ref_tmp.name
 
-        # If user did not provide transcript, only attempt ASR for English
-        if not prompt_text and language.startswith("en"):
+        # If user did not provide transcript, attempt ASR extraction
+        if not prompt_text:
             prompt_text = self._transcribe(ref_path)
 
         preview_path = ref_path.replace(".wav", "_preview.wav")
@@ -123,23 +122,28 @@ class VoxCPMService:
         # Cap max_len dynamically to prevent runaway 4096-token generation loops
         preview_max_len = max(100, min(500, int(len(preview_text) * 3) + 80))
 
-        # Natural human preview generation (timesteps=20, cfg_value=1.35)
+        # Apply natural conversational tone steering so preview sounds like a real expressive human
+        preview_styled = preview_text
+        if not preview_styled.strip().startswith("("):
+            preview_styled = f"(natural conversational tone, warm and expressive human voice) {preview_text}"
+
+        # High fidelity human-grade generation (timesteps=22, cfg=1.35)
         if prompt_text:
             wav_data = self.model.generate(
-                text=preview_text,
+                text=preview_styled,
                 prompt_wav_path=ref_path,
                 prompt_text=prompt_text,
                 reference_wav_path=ref_path,
-                inference_timesteps=20,
+                inference_timesteps=22,
                 cfg_value=1.35,
                 denoise=False,
                 max_len=preview_max_len,
             )
         else:
             wav_data = self.model.generate(
-                text=preview_text,
+                text=preview_styled,
                 reference_wav_path=ref_path,
-                inference_timesteps=20,
+                inference_timesteps=22,
                 cfg_value=1.35,
                 denoise=False,
                 max_len=preview_max_len,
@@ -167,15 +171,32 @@ class VoxCPMService:
         import tempfile
         import soundfile as sf
 
-        prompt_text_to_synthesize = req.get("inputs") or req.get("text") or req.get("raw_text") or "Hello from Vocara."
+        raw_text = req.get("inputs") or req.get("text") or req.get("raw_text") or "Hello from Vocara."
         ref_b64 = req.get("reference_audio_base64") or req.get("prompt_audio_base64")
         modifiers = req.get("modifiers") or {}
         prompt_text = (req.get("prompt_text") or modifiers.get("prompt_text") or "").strip()
+
         # Natural human acoustic fidelity: 22 diffusion timesteps & relaxed 1.35 guidance
         timesteps = int(req.get("inference_timesteps") or 22)
         cfg_val = float(req.get("cfg_value") or 1.35)
-        language = (req.get("language") or "en").lower()
-        is_continuation = bool(req.get("is_continuation", False))
+
+        # Style & Tone Steering: ensures the generated voice speaks naturally like the cloned human
+        style_cues = []
+        if "style" in modifiers:
+            style_cues.append(str(modifiers["style"]))
+        if "emotion" in modifiers:
+            style_cues.append(f"{modifiers['emotion']} tone")
+        if "speed" in modifiers and float(modifiers.get("speed", 1.0)) != 1.0:
+            style_cues.append(f"{modifiers['speed']}x pace")
+
+        if not style_cues:
+            # Default to authentic, warm conversational human delivery rather than flat reading
+            style_cues.append("natural conversational tone, warm human inflection, relaxed pacing")
+
+        combined_style = ", ".join(style_cues)
+        styled_text = raw_text
+        if not styled_text.strip().startswith("("):
+            styled_text = f"({combined_style}) {raw_text}"
 
         ref_path = None
         if ref_b64:
@@ -184,20 +205,20 @@ class VoxCPMService:
                 ref_tmp.write(ref_bytes)
                 ref_path = ref_tmp.name
 
-            # If prompt_text is not yet provided, only attempt ASR for English if continuation is requested
-            if is_continuation and not prompt_text and language.startswith("en"):
+            if not prompt_text:
                 prompt_text = self._transcribe(ref_path)
 
         out_tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False).name
 
-        # Calculate dynamic max token limit based on text length (prevents 4096-token runaway hang)
-        char_count = len(prompt_text_to_synthesize)
+        # Dynamic max token limit based on text length (prevents runaway hang)
+        char_count = len(styled_text)
         synth_max_len = max(150, min(1500, int(char_count * 3.5) + 100))
 
-        if ref_path and is_continuation and prompt_text:
-            # Continuation mode: continues sentence in the same breath as prompt audio
+        if ref_path and prompt_text:
+            # Ultimate Voice Cloning:
+            # Replicates exact speaker timbre, pitch resonance, accent, and natural human tone
             wav_data = self.model.generate(
-                text=prompt_text_to_synthesize,
+                text=styled_text,
                 prompt_wav_path=ref_path,
                 prompt_text=prompt_text,
                 reference_wav_path=ref_path,
@@ -208,11 +229,10 @@ class VoxCPMService:
             )
             os.remove(ref_path)
         elif ref_path:
-            # Natural Human Zero-Shot Timbre Cloning:
-            # Replicates 100% authentic speaker timbre and acoustic harmonics,
-            # while generating authentic sentence-opening cadence, natural pauses, and conversational intonation.
+            # Controllable Voice Cloning with Style Steering:
+            # Clones speaker's vocal acoustics while applying conversational human prosody
             wav_data = self.model.generate(
-                text=prompt_text_to_synthesize,
+                text=styled_text,
                 reference_wav_path=ref_path,
                 inference_timesteps=timesteps,
                 cfg_value=cfg_val,
@@ -223,7 +243,7 @@ class VoxCPMService:
         else:
             # Standard neural TTS
             wav_data = self.model.generate(
-                text=prompt_text_to_synthesize,
+                text=styled_text,
                 inference_timesteps=timesteps,
                 cfg_value=cfg_val,
                 max_len=synth_max_len,
@@ -260,10 +280,10 @@ class VoxCPMService:
             cues.append(f"style: {modifiers['style']}")
 
         control_str = ", ".join(cues)
-        formatted_prompt = f"({control_str}) {preview_text}" if control_str else preview_text
+        formatted_prompt = f"({control_str}) {preview_text}" if control_str else f"(natural human voice) {preview_text}"
 
         out_tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False).name
-        wav_data = self.model.generate(text=formatted_prompt, inference_timesteps=18, cfg_value=1.35)
+        wav_data = self.model.generate(text=formatted_prompt, inference_timesteps=20, cfg_value=1.35)
         sf.write(out_tmp, wav_data, self.sample_rate)
 
         with open(out_tmp, "rb") as f:
@@ -327,7 +347,6 @@ class VoxCPMService:
             prompt_text: str | None = None
             inference_timesteps: int | None = 22
             cfg_value: float | None = 1.35
-            is_continuation: bool | None = False
 
         class DesignRequest(BaseModel):
             base_voice_id: str | None = None
@@ -346,17 +365,14 @@ class VoxCPMService:
 
         @web_app.post("/clone")
         def clone_endpoint(req: CloneRequest):
-            # Direct in-memory invocation via internal Python method
             return self._clone(req.model_dump())
 
         @web_app.post("/synthesize")
         def synthesize_endpoint(req: SynthesizeRequest):
-            # Direct in-memory invocation via internal Python method
             return self._synthesize(req.model_dump())
 
         @web_app.post("/design")
         def design_endpoint(req: DesignRequest):
-            # Direct in-memory invocation via internal Python method
             return self._design(req.model_dump())
 
         return web_app
