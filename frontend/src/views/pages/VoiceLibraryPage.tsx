@@ -32,6 +32,8 @@ export const VoiceLibraryPage: React.FC = () => {
     setCloneFile,
     consentConfirmed,
     setConsentConfirmed,
+    enhanceAudio,
+    setEnhanceAudio,
     isSubmittingClone,
     cloneErrors,
     submitClone,
@@ -287,11 +289,11 @@ export const VoiceLibraryPage: React.FC = () => {
             </div>
 
             <div className="space-y-1">
-              <Label htmlFor="clone-file">Audio Reference Sample (WAV, MP3, FLAC)</Label>
+              <Label htmlFor="clone-file">Audio Reference Sample (WAV, MP3, M4A, WebM, FLAC)</Label>
               <Input
                 id="clone-file"
                 type="file"
-                accept="audio/*"
+                accept="audio/*,.wav,.mp3,.ogg,.flac,.m4a,.webm,.aac"
                 onChange={(e) => {
                   if (e.target.files?.[0]) setCloneFile(e.target.files[0]);
                 }}
@@ -312,7 +314,22 @@ export const VoiceLibraryPage: React.FC = () => {
               </p>
             </div>
 
-            <div className="pt-2">
+            <div className="pt-1">
+              <div className="flex items-start gap-2.5">
+                <input
+                  type="checkbox"
+                  id="enhance-check"
+                  checked={enhanceAudio}
+                  onChange={(e) => setEnhanceAudio(e.target.checked)}
+                  className="mt-1 h-4 w-4 rounded border-input text-primary focus:ring-primary"
+                />
+                <Label htmlFor="enhance-check" className="text-xs text-muted-foreground leading-normal font-normal">
+                  <span className="font-medium text-foreground">Enhance Audio Quality:</span> Automatically remove background noise, trim dead silence, and normalize vocal volume.
+                </Label>
+              </div>
+            </div>
+
+            <div className="pt-1">
               <div className="flex items-start gap-2.5">
                 <input
                   type="checkbox"

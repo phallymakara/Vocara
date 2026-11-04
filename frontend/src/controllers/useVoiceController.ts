@@ -30,6 +30,7 @@ export function useVoiceController() {
   const [cloneDescription, setCloneDescription] = useState<string>("");
   const [cloneFile, setCloneFile] = useState<File | null>(null);
   const [consentConfirmed, setConsentConfirmed] = useState<boolean>(false);
+  const [enhanceAudio, setEnhanceAudio] = useState<boolean>(true);
   const [isSubmittingClone, setIsSubmittingClone] = useState<boolean>(false);
   const [cloneErrors, setCloneErrors] = useState<Record<string, string>>({});
 
@@ -123,6 +124,7 @@ export function useVoiceController() {
       formData.append("language", cloneLang);
       formData.append("description", cloneDescription);
       formData.append("consent_confirmed", "true");
+      formData.append("enhance_audio", enhanceAudio ? "true" : "false");
       if (cloneFile) {
         formData.append("file", cloneFile);
       }
@@ -132,6 +134,7 @@ export function useVoiceController() {
       setCloneName("");
       setCloneFile(null);
       setConsentConfirmed(false);
+      setEnhanceAudio(true);
       await loadVoices();
       return true;
     } catch (err: unknown) {
@@ -300,6 +303,8 @@ export function useVoiceController() {
     setCloneFile,
     consentConfirmed,
     setConsentConfirmed,
+    enhanceAudio,
+    setEnhanceAudio,
     isSubmittingClone,
     cloneErrors,
     submitClone,

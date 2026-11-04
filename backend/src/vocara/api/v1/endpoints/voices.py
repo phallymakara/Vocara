@@ -150,7 +150,7 @@ async def get_voice_preview(
 async def clone_voice(
     current_key: CurrentApiKey,
     voice_service: VoiceServiceDep,
-    file: UploadFile = File(..., description="Reference audio file (WAV, MP3, OGG, FLAC)"),
+    file: UploadFile = File(..., description="Reference audio file (WAV, MP3, OGG, FLAC, M4A, WebM)"),
     name: str = Form(..., min_length=2, max_length=100, description="Voice profile name"),
     consent_confirmed: bool = Form(
         ..., description="Explicit consent confirmation from the voice owner"
@@ -159,6 +159,9 @@ async def clone_voice(
     description: str = Form(default="", max_length=255, description="Optional description"),
     visibility: VoiceVisibility = Form(
         default=VoiceVisibility.PRIVATE, description="Voice visibility"
+    ),
+    enhance_audio: bool = Form(
+        default=True, description="Enable automated noise reduction and loudness normalization"
     ),
 ) -> VoiceResponse:
     """Upload reference audio to create a cloned voice profile.
@@ -174,6 +177,7 @@ async def clone_voice(
         language=language,
         description=description,
         visibility=visibility,
+        enhance_audio=enhance_audio,
     )
     return _to_voice_response(cloned)
 

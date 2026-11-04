@@ -20,6 +20,7 @@ from vocara.utils.audio import (
     extract_acoustic_profile,
     generate_synthetic_tone_wav,
     normalize_audio_to_wav,
+    preprocess_reference_audio,
     validate_reference_audio,
 )
 
@@ -164,16 +165,22 @@ class VoiceService:
         language: str = "km-KH",
         description: str = "",
         visibility: VoiceVisibility = VoiceVisibility.PRIVATE,
+        enhance_audio: bool = True,
     ) -> Voice:
         """Clone a voice profile from reference audio after verifying explicit consent."""
         if not consent_confirmed:
             raise ConsentRequiredError()
 
-        # Validate audio bounds and container header
-        validate_reference_audio(audio_bytes)
-
-        # Resample and normalize to standard 24kHz 16-bit mono WAV
-        normalized_wav, duration = normalize_audio_to_wav(audio_bytes, target_sample_rate=24000)
+        # Run reference audio through the Preprocessing & Quality Enhancement Pipeline:
+        # (decoding, silence trimming, duration guardrails, gentle denoising, LUFS normalization, resampling)
+        normalized_wav, duration, metrics = preprocess_reference_audio(
+            audio_bytes,
+            target_sample_rate=24000,
+            enable_denoise=enhance_audio,
+            enable_normalization=enhance_audio,
+            min_duration=2.5,
+            max_duration=30.0,
+        )
 
         # Extract deep acoustic vocal profile (gender, pitch F0, timbre offset)
         profile = extract_acoustic_profile(normalized_wav)
@@ -205,6 +212,7 @@ class VoiceService:
             "pitch": profile["pitch_factor"],
             "pitch_hz_offset": profile["pitch_hz_offset"],
             "estimated_f0": profile["estimated_f0"],
+            "audio_pipeline": metrics,
         }
         if feature_token:
             modifiers["feature_token"] = feature_token

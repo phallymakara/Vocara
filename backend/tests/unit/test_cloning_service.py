@@ -129,7 +129,7 @@ async def test_clone_voice_invalid_audio_fails(voice_service: VoiceService) -> N
 @pytest.mark.asyncio
 async def test_clone_voice_success(voice_service: VoiceService, storage: InMemoryStorage) -> None:
     """Successful cloning uploads reference/preview audio and verifies consent metadata."""
-    sample_wav = generate_synthetic_tone_wav(duration_seconds=1.2, sample_rate=24000)
+    sample_wav = generate_synthetic_tone_wav(duration_seconds=3.0, sample_rate=24000)
 
     voice = await voice_service.clone_voice(
         owner_id="dev_user_1",

@@ -20,7 +20,7 @@ async def test_cloning_and_design_api_flow(async_client: AsyncClient) -> None:
     api_key = key_resp.json()["api_key"]
     headers = {"Authorization": f"Bearer {api_key}"}
 
-    sample_wav = generate_synthetic_tone_wav(duration_seconds=1.0, sample_rate=24000)
+    sample_wav = generate_synthetic_tone_wav(duration_seconds=3.0, sample_rate=24000)
 
     # 2. Test clone rejection when consent is false
     no_consent_resp = await async_client.post(
