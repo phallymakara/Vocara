@@ -10,13 +10,26 @@ The Vocara frontend provides an interactive, responsive management portal for de
 - Usage and Analytics: Visual metrics dashboard tracking monthly character usage, tier allocations, remaining quotas, and historical consumption.
 - Webhooks and Batch Jobs: Diagnostic view displaying asynchronous generation job states, processing logs, and webhook endpoint subscription management.
 
-## Getting Started
+## Execution Guide
 
-### Configuration
-Configure the web console API connection by creating your local environment file from the provided template file, specifying the target backend service URL.
+### 1. Environment Setup
+Copy the sample environment configuration file:
+cp .env.example .env.local
 
-### Local Development
-To launch the developer console locally, install the package dependencies with your package manager, then run the local development server. The console will become accessible in your web browser.
+Verify that NEXT_PUBLIC_API_BASE_URL points to your running backend API instance, for example http://localhost:8002/api/v1.
 
-### Production Build
-To prepare optimized, static production assets, execute the standard web application build script. Compiled static files will be placed into the production distribution directory.
+### 2. Dependency Installation
+Prerequisite: Node.js version 18 or higher and npm.
+
+Install dependencies from the frontend directory:
+npm install
+
+### 3. Running the Development Server
+Launch the local web server:
+npm run dev
+
+The web console will become available at http://localhost:3000 in your browser.
+
+### 4. Production Build Verification
+To verify the production compilation:
+npm run build
