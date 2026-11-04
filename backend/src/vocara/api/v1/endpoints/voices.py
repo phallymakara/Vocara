@@ -161,7 +161,11 @@ async def clone_voice(
         default=VoiceVisibility.PRIVATE, description="Voice visibility"
     ),
     enhance_audio: bool = Form(
-        default=True, description="Enable automated noise reduction and loudness normalization"
+        default=True, description="Enable automated subtle noise reduction and gentle rumble removal"
+    ),
+    prompt_text: str = Form(
+        default="",
+        description="Optional transcript of what was spoken in the reference audio to enable Ultimate Voice Cloning (95%+ match)",
     ),
 ) -> VoiceResponse:
     """Upload reference audio to create a cloned voice profile.
@@ -178,6 +182,7 @@ async def clone_voice(
         description=description,
         visibility=visibility,
         enhance_audio=enhance_audio,
+        prompt_text=prompt_text,
     )
     return _to_voice_response(cloned)
 

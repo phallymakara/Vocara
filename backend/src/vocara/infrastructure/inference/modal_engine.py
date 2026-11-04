@@ -82,6 +82,8 @@ class ModalInferenceEngine(BaseInferenceEngine):
             except Exception as err:
                 logger.warning("modal_reference_download_failed", key=voice.reference_audio_key, error=str(err))
 
+        prompt_text = voice.modifiers.get("prompt_text") if voice.modifiers else None
+
         async def _call() -> tuple[bytes, float]:
             client = await self._get_client()
             url = f"{self.endpoint_url.rstrip('/')}/synthesize"
@@ -96,6 +98,9 @@ class ModalInferenceEngine(BaseInferenceEngine):
                 "reference_audio_key": voice.reference_audio_key,
                 "reference_audio_base64": ref_audio_b64,
                 "prompt_audio_base64": ref_audio_b64,
+                "prompt_text": prompt_text,
+                "inference_timesteps": 20,
+                "cfg_value": 2.0,
             }
 
             resp = await client.post(url, json=payload, headers=self._get_headers())
@@ -124,18 +129,20 @@ class ModalInferenceEngine(BaseInferenceEngine):
         self,
         reference_audio_bytes: bytes,
         language: str = "km-KH",
-    ) -> tuple[str, bytes]:
-        """Dispatch audio sample to serverless extractor for vocal embeddings."""
+        prompt_text: str | None = None,
+    ) -> tuple[str, bytes, str]:
+        """Dispatch audio sample to serverless extractor for vocal embeddings and transcription."""
         if not self.endpoint_url:
             raise InferenceServiceError("Modal inference endpoint URL is not configured.")
 
-        async def _call() -> tuple[str, bytes]:
+        async def _call() -> tuple[str, bytes, str]:
             client = await self._get_client()
             url = f"{self.endpoint_url.rstrip('/')}/clone"
             payload = {
                 "audio_base64": base64.b64encode(reference_audio_bytes).decode("utf-8"),
                 "language": language,
                 "preview_text": DEFAULT_PREVIEW_TEXT,
+                "prompt_text": prompt_text,
             }
 
             resp = await client.post(url, json=payload, headers=self._get_headers())
@@ -148,7 +155,8 @@ class ModalInferenceEngine(BaseInferenceEngine):
             feature_token = data.get("feature_token", "")
             preview_b64 = data.get("preview_base64")
             preview_bytes = base64.b64decode(preview_b64) if preview_b64 else reference_audio_bytes
-            return feature_token, preview_bytes
+            detected_prompt = str(data.get("prompt_text") or prompt_text or "")
+            return feature_token, preview_bytes, detected_prompt
 
         return await self._execute_with_retry("modal_clone_voice", _call)  # type: ignore[no-any-return]
 

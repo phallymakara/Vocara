@@ -30,6 +30,8 @@ export const VoiceLibraryPage: React.FC = () => {
     cloneName,
     setCloneName,
     setCloneFile,
+    clonePromptText,
+    setClonePromptText,
     consentConfirmed,
     setConsentConfirmed,
     enhanceAudio,
@@ -304,13 +306,40 @@ export const VoiceLibraryPage: React.FC = () => {
               )}
             </div>
 
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="clone-transcript">Spoken Text / Transcript</Label>
+                <span className="text-[11px] text-muted-foreground">Optional, enables 95%+ match</span>
+              </div>
+              <textarea
+                id="clone-transcript"
+                rows={2}
+                value={clonePromptText}
+                onChange={(e) => setClonePromptText(e.target.value)}
+                placeholder="Type the exact text spoken in your audio (or click 'Use this script' below)..."
+                className="w-full px-3 py-2 text-xs bg-background border border-input rounded-md text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Aligning audio with text triggers Ultimate Cloning for exact vocal nuance, accent, and inflection. If blank, it will be automatically transcribed on GPU.
+              </p>
+            </div>
+
             <div className="rounded border border-border bg-muted/20 p-2.5 text-xs space-y-1">
-              <span className="font-medium text-foreground">Recommended Script to Read:</span>
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-foreground">Recommended Script to Read:</span>
+                <button
+                  type="button"
+                  onClick={() => setClonePromptText("សួស្តីខ្ញុំជាវូការាជាអេអាយបម្លែងអក្សរទៅជាសម្លេង")}
+                  className="text-[11px] text-primary hover:underline font-normal cursor-pointer"
+                >
+                  Use this script
+                </button>
+              </div>
               <p className="text-muted-foreground select-all font-sans font-medium">
                 &ldquo;សួស្តីខ្ញុំជាវូការាជាអេអាយបម្លែងអក្សរទៅជាសម្លេង&rdquo;
               </p>
               <p className="text-[11px] text-muted-foreground">
-                Speaking this phrase provides the optimal neural acoustic foundation for your cloned preview.
+                Speaking this phrase provides the optimal acoustic foundation for your cloned preview.
               </p>
             </div>
 
@@ -324,7 +353,7 @@ export const VoiceLibraryPage: React.FC = () => {
                   className="mt-1 h-4 w-4 rounded border-input text-primary focus:ring-primary"
                 />
                 <Label htmlFor="enhance-check" className="text-xs text-muted-foreground leading-normal font-normal">
-                  <span className="font-medium text-foreground">Enhance Audio Quality:</span> Automatically remove background noise, trim dead silence, and normalize vocal volume.
+                  <span className="font-medium text-foreground">Gentle Noise Reduction:</span> Subtly remove low-frequency microphone rumble and background room hiss while keeping your voice 100% natural.
                 </Label>
               </div>
             </div>

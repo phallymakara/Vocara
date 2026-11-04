@@ -266,25 +266,76 @@ def normalize_audio_levels(
     return normalized.astype(np.float32)
 
 
+def reduce_noise_subtle(data: np.ndarray, sample_rate: int) -> np.ndarray:
+    """Subtly reduce background noise while leaving vocal formants 100% natural and uncolored.
+
+    1. Subsonic high-pass filter (cutoff 65 Hz): Eliminates low-frequency AC rumble, desk vibrations,
+       and DC offset without touching human speech fundamental frequencies (human pitch F0 >= 85 Hz).
+    2. Subtle noise floor expansion: Smoothly attenuates very quiet room pauses (< -45 dBFS) by 2-3 dB
+       to clean up background hiss without affecting speech consonants, vowels, or breathing.
+    3. Peak headroom ceiling limiter: Prevents digital clipping (max peak <= 0.95).
+    """
+    if len(data) < 256:
+        return data
+
+    # 1. 1st order high-pass filter at 65 Hz
+    fc = 65.0
+    dt = 1.0 / sample_rate
+    rc = 1.0 / (2.0 * np.pi * fc)
+    alpha = rc / (rc + dt)
+
+    filtered = np.empty_like(data)
+    filtered[0] = data[0]
+    for i in range(1, len(data)):
+        filtered[i] = alpha * (filtered[i - 1] + data[i] - data[i - 1])
+
+    # 2. Subtle soft-floor attenuation for very quiet ambient pauses (< -45 dBFS)
+    frame_len = max(1, int(sample_rate * 0.02))  # 20ms frames
+    n_frames = len(filtered) // frame_len
+    if n_frames < 2:
+        return filtered
+
+    gain_curve = np.ones(len(filtered), dtype=np.float32)
+    threshold_linear = float(10.0 ** (-45.0 / 20.0))
+
+    for f_idx in range(n_frames):
+        start = f_idx * frame_len
+        end = start + frame_len
+        frame = filtered[start:end]
+        rms = float(np.sqrt(np.mean(frame**2) + 1e-12))
+        if rms < threshold_linear:
+            ratio = rms / threshold_linear
+            # Smoothly transition from ~0.75 (-2.5 dB) at noise floor to 1.0 at threshold
+            g = 0.75 + 0.25 * ratio
+            gain_curve[start:end] = g
+
+    # Smooth gain curve over 10ms window to prevent clicks
+    window = max(1, int(sample_rate * 0.01))
+    gain_smooth = np.convolve(gain_curve, np.ones(window, dtype=np.float32) / window, mode="same")
+    out = (filtered * gain_smooth).astype(np.float32)
+
+    # 3. Soft peak limiter to prevent clipping
+    peak = float(np.max(np.abs(out)) + 1e-12)
+    if peak > 0.95:
+        out = out * (0.95 / peak)
+
+    return out.astype(np.float32)
+
+
 def preprocess_reference_audio(
     audio_bytes: bytes,
     target_sample_rate: int = 24000,
     enable_denoise: bool = True,
-    enable_normalization: bool = True,
-    min_duration: float = 2.5,
-    max_duration: float = 30.0,
+    enable_normalization: bool = False,
+    min_duration: float = 0.5,
+    max_duration: float = 120.0,
+    enable_trim: bool = False,
 ) -> tuple[bytes, float, dict[str, Any]]:
-    """Complete audio preprocessing pipeline for voice cloning.
+    """Universal audio decoding and gentle noise reduction pipeline for voice cloning.
 
-    Pipeline stages:
-    1. Validation: Header inspection and file boundary check.
-    2. Decoding: Universal decoding of WAV, MP3, OGG, FLAC, M4A, WebM, AAC.
-    3. Channel Downmix: Convert stereo to mono.
-    4. Silence Trimming: Strip leading/trailing dead silence.
-    5. Duration Guardrails: Ensure >= 2.5s and smart-crop > 30s to the best 18s window.
-    6. Denoise: Gentle spectral subtraction to remove microphone hum and fan noise.
-    7. Normalization: Target -20 dB RMS with -1.0 dB peak ceiling.
-    8. Resample & Export: Output clean 24kHz 16-bit PCM WAV.
+    Preserves 100% of the speaker's original cadence, pitch, emotion, and vocal nuances,
+    while applying subtle noise cleaning to remove low-frequency rumble and background hiss.
+    Does not aggressively crop, trim, or compress the audio.
 
     Returns:
         tuple[wav_bytes, duration_seconds, metrics_dict]
@@ -293,7 +344,7 @@ def preprocess_reference_audio(
     meta = validate_reference_audio(audio_bytes)
     detected_format = meta["format"]
 
-    # 2. Decoding
+    # 2. Universal Decoding
     data, sample_rate = decode_audio_to_pcm(audio_bytes)
 
     # 3. Channel Downmix
@@ -302,28 +353,26 @@ def preprocess_reference_audio(
 
     raw_duration = len(data) / float(sample_rate)
 
-    # 4. Silence Trimming
-    data = trim_silence(data, sample_rate)
+    # Optional silence trimming (disabled by default to preserve natural pauses & timing)
+    if enable_trim:
+        data = trim_silence(data, sample_rate)
 
-    # 5. Duration Guardrails
-    data = apply_duration_guardrails(
-        data,
-        sample_rate,
-        min_seconds=min_duration,
-        max_seconds=max_duration,
-        target_crop_seconds=18.0,
-    )
-
-    # 6. Noise Reduction
+    # 4. Subtle Noise Reduction (gentle rumble filter & soft ambient floor)
     if enable_denoise:
-        data = reduce_background_noise(data, sample_rate, reduction_db=6.0)
+        data = reduce_noise_subtle(data, sample_rate)
 
-    # 7. Normalization
+    # 5. Optional normalization or gentle peak safety
     if enable_normalization:
         data = normalize_audio_levels(data, target_rms_db=-20.0, peak_ceiling_db=-1.0)
+    else:
+        # Peak safety limiter only (leaves natural dynamics untouched)
+        peak = float(np.max(np.abs(data)) + 1e-12)
+        if peak > 0.95:
+            data = data * (0.95 / peak)
 
-    # 8. Resample to target_sample_rate
     final_duration = len(data) / float(sample_rate)
+
+    # 6. Resample if needed
     if sample_rate != target_sample_rate:
         target_length = int(len(data) * target_sample_rate / sample_rate)
         time_orig = np.linspace(0, final_duration, len(data), endpoint=False)

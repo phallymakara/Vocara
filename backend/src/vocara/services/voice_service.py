@@ -166,20 +166,22 @@ class VoiceService:
         description: str = "",
         visibility: VoiceVisibility = VoiceVisibility.PRIVATE,
         enhance_audio: bool = True,
+        prompt_text: str = "",
     ) -> Voice:
         """Clone a voice profile from reference audio after verifying explicit consent."""
         if not consent_confirmed:
             raise ConsentRequiredError()
 
-        # Run reference audio through the Preprocessing & Quality Enhancement Pipeline:
-        # (decoding, silence trimming, duration guardrails, gentle denoising, LUFS normalization, resampling)
+        # Run reference audio through universal decoding and subtle noise cleaning:
+        # (leaves speech, cadence, and timing completely untouched)
         normalized_wav, duration, metrics = preprocess_reference_audio(
             audio_bytes,
             target_sample_rate=24000,
             enable_denoise=enhance_audio,
-            enable_normalization=enhance_audio,
-            min_duration=2.5,
-            max_duration=30.0,
+            enable_normalization=False,
+            min_duration=0.5,
+            max_duration=120.0,
+            enable_trim=False,
         )
 
         # Extract deep acoustic vocal profile (gender, pitch F0, timbre offset)
@@ -192,12 +194,27 @@ class VoiceService:
         # The preview for the cloned voice will use the canonical default preview text synthesized with the cloned voice
         preview_sample = normalized_wav
         feature_token: str | None = None
+        final_prompt_text = prompt_text.strip()
 
         if self.inference_engine:
             try:
-                feature_token, engine_preview = await self.inference_engine.clone_voice(
-                    normalized_wav, language=language
-                )
+                # Attempt to pass prompt_text if supported by engine
+                try:
+                    clone_res = await self.inference_engine.clone_voice(  # type: ignore[call-arg]
+                        normalized_wav, language=language, prompt_text=final_prompt_text
+                    )
+                except TypeError:
+                    clone_res = await self.inference_engine.clone_voice(
+                        normalized_wav, language=language
+                    )
+
+                if len(clone_res) >= 3:
+                    feature_token, engine_preview, detected_prompt = clone_res[0], clone_res[1], clone_res[2]
+                    if detected_prompt and not final_prompt_text:
+                        final_prompt_text = detected_prompt
+                else:
+                    feature_token, engine_preview = clone_res[0], clone_res[1]
+
                 if engine_preview and engine_preview != normalized_wav:
                     preview_sample = engine_preview
             except Exception:
@@ -216,6 +233,8 @@ class VoiceService:
         }
         if feature_token:
             modifiers["feature_token"] = feature_token
+        if final_prompt_text:
+            modifiers["prompt_text"] = final_prompt_text
 
         voice = Voice(
             id=voice_id,

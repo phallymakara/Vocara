@@ -161,7 +161,8 @@ def test_preprocess_reference_audio_end_to_end():
     assert isinstance(clean_wav, bytes)
     assert len(clean_wav) > 1024
     assert clean_wav.startswith(b"RIFF")
-    assert 3.5 <= duration <= 5.0
+    # Natural audio duration is preserved without aggressive silence cropping
+    assert 5.5 <= duration <= 6.5
     assert metrics["sample_rate"] == 24000
     assert metrics["denoise_applied"] is True
     assert metrics["normalization_applied"] is True

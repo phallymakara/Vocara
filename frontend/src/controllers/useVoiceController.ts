@@ -25,10 +25,11 @@ export function useVoiceController() {
   const [isDeletingVoice, setIsDeletingVoice] = useState<boolean>(false);
 
   // Clone Form State
-  const [cloneName, setCloneName] = useState<string>("" );
+  const [cloneName, setCloneName] = useState<string>("");
   const [cloneLang, setCloneLang] = useState<string>("km-KH");
   const [cloneDescription, setCloneDescription] = useState<string>("");
   const [cloneFile, setCloneFile] = useState<File | null>(null);
+  const [clonePromptText, setClonePromptText] = useState<string>("");
   const [consentConfirmed, setConsentConfirmed] = useState<boolean>(false);
   const [enhanceAudio, setEnhanceAudio] = useState<boolean>(true);
   const [isSubmittingClone, setIsSubmittingClone] = useState<boolean>(false);
@@ -125,6 +126,9 @@ export function useVoiceController() {
       formData.append("description", cloneDescription);
       formData.append("consent_confirmed", "true");
       formData.append("enhance_audio", enhanceAudio ? "true" : "false");
+      if (clonePromptText.trim()) {
+        formData.append("prompt_text", clonePromptText.trim());
+      }
       if (cloneFile) {
         formData.append("file", cloneFile);
       }
@@ -132,6 +136,7 @@ export function useVoiceController() {
       await apiClient.cloneVoice(formData);
       setActiveModal(null);
       setCloneName("");
+      setClonePromptText("");
       setCloneFile(null);
       setConsentConfirmed(false);
       setEnhanceAudio(true);
@@ -301,6 +306,8 @@ export function useVoiceController() {
     setCloneDescription,
     cloneFile,
     setCloneFile,
+    clonePromptText,
+    setClonePromptText,
     consentConfirmed,
     setConsentConfirmed,
     enhanceAudio,
