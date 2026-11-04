@@ -105,7 +105,8 @@ class VoxCPMService:
         import soundfile as sf
 
         audio_b64 = req.get("audio_base64", "")
-        preview_text = req.get("preview_text") or "Hello! This is a preview of your cloned voice."
+        # ONLY synthesize the exact preview text without any injected prefixes
+        preview_text = (req.get("preview_text") or "Hello! This is a preview of your cloned voice.").strip()
         prompt_text = (req.get("prompt_text") or "").strip()
 
         ref_bytes = base64.b64decode(audio_b64)
@@ -122,15 +123,10 @@ class VoxCPMService:
         # Cap max_len dynamically to prevent runaway 4096-token generation loops
         preview_max_len = max(100, min(500, int(len(preview_text) * 3) + 80))
 
-        # Apply natural conversational tone steering so preview sounds like a real expressive human
-        preview_styled = preview_text
-        if not preview_styled.strip().startswith("("):
-            preview_styled = f"(natural conversational tone, warm and expressive human voice) {preview_text}"
-
-        # High fidelity human-grade generation (timesteps=22, cfg=1.35)
+        # Synthesize ONLY the preview text verbatim
         if prompt_text:
             wav_data = self.model.generate(
-                text=preview_styled,
+                text=preview_text,
                 prompt_wav_path=ref_path,
                 prompt_text=prompt_text,
                 reference_wav_path=ref_path,
@@ -141,7 +137,7 @@ class VoxCPMService:
             )
         else:
             wav_data = self.model.generate(
-                text=preview_styled,
+                text=preview_text,
                 reference_wav_path=ref_path,
                 inference_timesteps=22,
                 cfg_value=1.35,
@@ -171,32 +167,15 @@ class VoxCPMService:
         import tempfile
         import soundfile as sf
 
-        raw_text = req.get("inputs") or req.get("text") or req.get("raw_text") or "Hello from Vocara."
+        # Synthesize ONLY and STRICTLY the exact input text provided by the user
+        input_text = (req.get("inputs") or req.get("text") or req.get("raw_text") or "Hello from Vocara.").strip()
         ref_b64 = req.get("reference_audio_base64") or req.get("prompt_audio_base64")
         modifiers = req.get("modifiers") or {}
         prompt_text = (req.get("prompt_text") or modifiers.get("prompt_text") or "").strip()
 
-        # Natural human acoustic fidelity: 22 diffusion timesteps & relaxed 1.35 guidance
+        # Natural acoustic fidelity: 22 diffusion timesteps & relaxed 1.35 guidance scale
         timesteps = int(req.get("inference_timesteps") or 22)
         cfg_val = float(req.get("cfg_value") or 1.35)
-
-        # Style & Tone Steering: ensures the generated voice speaks naturally like the cloned human
-        style_cues = []
-        if "style" in modifiers:
-            style_cues.append(str(modifiers["style"]))
-        if "emotion" in modifiers:
-            style_cues.append(f"{modifiers['emotion']} tone")
-        if "speed" in modifiers and float(modifiers.get("speed", 1.0)) != 1.0:
-            style_cues.append(f"{modifiers['speed']}x pace")
-
-        if not style_cues:
-            # Default to authentic, warm conversational human delivery rather than flat reading
-            style_cues.append("natural conversational tone, warm human inflection, relaxed pacing")
-
-        combined_style = ", ".join(style_cues)
-        styled_text = raw_text
-        if not styled_text.strip().startswith("("):
-            styled_text = f"({combined_style}) {raw_text}"
 
         ref_path = None
         if ref_b64:
@@ -210,15 +189,15 @@ class VoxCPMService:
 
         out_tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False).name
 
-        # Dynamic max token limit based on text length (prevents runaway hang)
-        char_count = len(styled_text)
+        # Dynamic max token limit based on exact text length (prevents runaway hang)
+        char_count = len(input_text)
         synth_max_len = max(150, min(1500, int(char_count * 3.5) + 100))
 
         if ref_path and prompt_text:
             # Ultimate Voice Cloning:
             # Replicates exact speaker timbre, pitch resonance, accent, and natural human tone
             wav_data = self.model.generate(
-                text=styled_text,
+                text=input_text,
                 prompt_wav_path=ref_path,
                 prompt_text=prompt_text,
                 reference_wav_path=ref_path,
@@ -229,10 +208,9 @@ class VoxCPMService:
             )
             os.remove(ref_path)
         elif ref_path:
-            # Controllable Voice Cloning with Style Steering:
-            # Clones speaker's vocal acoustics while applying conversational human prosody
+            # Zero-shot voice cloning strictly speaking the input text:
             wav_data = self.model.generate(
-                text=styled_text,
+                text=input_text,
                 reference_wav_path=ref_path,
                 inference_timesteps=timesteps,
                 cfg_value=cfg_val,
@@ -243,7 +221,7 @@ class VoxCPMService:
         else:
             # Standard neural TTS
             wav_data = self.model.generate(
-                text=styled_text,
+                text=input_text,
                 inference_timesteps=timesteps,
                 cfg_value=cfg_val,
                 max_len=synth_max_len,
@@ -267,23 +245,9 @@ class VoxCPMService:
         import uuid
         import soundfile as sf
 
-        preview_text = req.get("preview_text") or "Hello! This is a preview of your designed voice."
-        modifiers = req.get("modifiers") or {}
-        cues = []
-        if "pitch" in modifiers:
-            cues.append(f"pitch: {modifiers['pitch']}")
-        if "speed" in modifiers:
-            cues.append(f"speed: {modifiers['speed']}x")
-        if "emotion" in modifiers:
-            cues.append(f"emotion: {modifiers['emotion']}")
-        if "style" in modifiers:
-            cues.append(f"style: {modifiers['style']}")
-
-        control_str = ", ".join(cues)
-        formatted_prompt = f"({control_str}) {preview_text}" if control_str else f"(natural human voice) {preview_text}"
-
+        preview_text = (req.get("preview_text") or "Hello! This is a preview of your designed voice.").strip()
         out_tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False).name
-        wav_data = self.model.generate(text=formatted_prompt, inference_timesteps=20, cfg_value=1.35)
+        wav_data = self.model.generate(text=preview_text, inference_timesteps=20, cfg_value=1.35)
         sf.write(out_tmp, wav_data, self.sample_rate)
 
         with open(out_tmp, "rb") as f:
