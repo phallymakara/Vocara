@@ -199,6 +199,7 @@ export const TTSStudioPage: React.FC = () => {
                 >
                   <option value="km-KH">Khmer (km-KH)</option>
                   <option value="en-US">English (en-US)</option>
+                  <option value="mixed">Mixed (Khmer & English Code-Switching)</option>
                 </select>
               </div>
 

@@ -36,6 +36,13 @@ async def list_languages(voice_service: VoiceServiceDep) -> list[LanguageInfo]:
             voice_count=en_count,
             is_default=False,
         ),
+        LanguageInfo(
+            code="mixed",
+            name="Mixed (Khmer & English)",
+            native_name="ភាសាខ្មែរ / English (Code-Switching)",
+            voice_count=km_count + en_count,
+            is_default=False,
+        ),
     ]
 
 
