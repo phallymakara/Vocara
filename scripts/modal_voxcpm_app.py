@@ -48,9 +48,11 @@ image = (
 # 3. Model Service Class with GPU
 @app.cls(
     image=image,
-    gpu="L4",  # L4 (Ada Lovelace) provides native hardware BF16 Tensor Cores (10x faster than T4)
+    gpu="A100-40GB",  # NVIDIA A100 (40GB) with 1,555 GB/s HBM2 bandwidth for near-instant inference
+    cpu=4.0,
+    memory=16384,
     timeout=300,
-    scaledown_window=60,  # Auto-scales to 0 when idle ($0 cost!)
+    scaledown_window=900,  # Stays warm for 15 minutes after last request (0s startup during testing!)
 )
 class VoxCPMService:
     @modal.enter()
