@@ -39,7 +39,7 @@ class ModalInferenceEngine(BaseInferenceEngine):
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(timeout=self.timeout_seconds)
+            self._client = httpx.AsyncClient(timeout=self.timeout_seconds, follow_redirects=True)
         return self._client
 
     def _get_headers(self) -> dict[str, str]:

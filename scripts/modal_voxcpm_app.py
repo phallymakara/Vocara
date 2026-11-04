@@ -81,6 +81,14 @@ class VoxCPMService:
         try:
             res = self.asr(wav_path)
             text = (res.get("text") or "").strip()
+            # Guard against Whisper hallucination loops (e.g. repeated syllables, excessive length)
+            words = text.split()
+            if len(words) > 30 or len(text) > 150:
+                print(f"ASR output rejected (too long/probable hallucination): '{text[:60]}...'")
+                return ""
+            if len(words) >= 4 and len(set(words)) <= 2:
+                print(f"ASR output rejected (repetition loop detected): '{text[:60]}...'")
+                return ""
             print(f"ASR transcribed reference audio: '{text}'")
             return text
         except Exception as e:
@@ -98,26 +106,27 @@ class VoxCPMService:
         audio_b64 = req.get("audio_base64", "")
         preview_text = req.get("preview_text") or "Hello! This is a preview of your cloned voice."
         prompt_text = (req.get("prompt_text") or "").strip()
+        language = (req.get("language") or "en").lower()
 
         ref_bytes = base64.b64decode(audio_b64)
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as ref_tmp:
             ref_tmp.write(ref_bytes)
             ref_path = ref_tmp.name
 
-        # If user did not provide transcript, auto-transcribe on GPU
-        if not prompt_text:
+        # If user did not provide transcript, only attempt ASR for English (avoids hallucination on other languages)
+        if not prompt_text and language.startswith("en"):
             prompt_text = self._transcribe(ref_path)
 
         preview_path = ref_path.replace(".wav", "_preview.wav")
 
-        # Ultimate Cloning: High-Fidelity speaker similarity (Nuance, Accent, Pacing)
+        # Fast preview generation (10 timesteps keeps response under 3s)
         if prompt_text:
             wav_data = self.model.generate(
                 text=preview_text,
                 prompt_wav_path=ref_path,
                 prompt_text=prompt_text,
                 reference_wav_path=ref_path,
-                inference_timesteps=20,
+                inference_timesteps=10,
                 cfg_value=2.0,
                 denoise=False,
             )
@@ -125,7 +134,7 @@ class VoxCPMService:
             wav_data = self.model.generate(
                 text=preview_text,
                 reference_wav_path=ref_path,
-                inference_timesteps=20,
+                inference_timesteps=10,
                 cfg_value=2.0,
                 denoise=False,
             )
@@ -157,8 +166,9 @@ class VoxCPMService:
         ref_b64 = req.get("reference_audio_base64") or req.get("prompt_audio_base64")
         modifiers = req.get("modifiers") or {}
         prompt_text = (req.get("prompt_text") or modifiers.get("prompt_text") or "").strip()
-        timesteps = int(req.get("inference_timesteps") or 20)
+        timesteps = int(req.get("inference_timesteps") or 15)
         cfg_val = float(req.get("cfg_value") or 2.0)
+        language = (req.get("language") or "en").lower()
 
         ref_path = None
         if ref_b64:
@@ -167,8 +177,8 @@ class VoxCPMService:
                 ref_tmp.write(ref_bytes)
                 ref_path = ref_tmp.name
 
-            # If prompt_text is not yet provided or saved, transcribe automatically
-            if not prompt_text:
+            # If prompt_text is not yet provided, only attempt ASR for English
+            if not prompt_text and language.startswith("en"):
                 prompt_text = self._transcribe(ref_path)
 
         out_tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False).name
