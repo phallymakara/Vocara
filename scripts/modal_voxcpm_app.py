@@ -48,7 +48,7 @@ image = (
 # 3. Model Service Class with GPU
 @app.cls(
     image=image,
-    gpu="T4",
+    gpu="L4",  # L4 (Ada Lovelace) provides native hardware BF16 Tensor Cores (10x faster than T4)
     timeout=300,
     scaledown_window=60,  # Auto-scales to 0 when idle ($0 cost!)
 )
@@ -119,6 +119,9 @@ class VoxCPMService:
 
         preview_path = ref_path.replace(".wav", "_preview.wav")
 
+        # Cap max_len dynamically to prevent runaway 4096-token generation loops
+        preview_max_len = max(100, min(500, int(len(preview_text) * 3) + 80))
+
         # Fast preview generation (10 timesteps keeps response under 3s)
         if prompt_text:
             wav_data = self.model.generate(
@@ -129,6 +132,7 @@ class VoxCPMService:
                 inference_timesteps=10,
                 cfg_value=2.0,
                 denoise=False,
+                max_len=preview_max_len,
             )
         else:
             wav_data = self.model.generate(
@@ -137,6 +141,7 @@ class VoxCPMService:
                 inference_timesteps=10,
                 cfg_value=2.0,
                 denoise=False,
+                max_len=preview_max_len,
             )
 
         sf.write(preview_path, wav_data, self.sample_rate)
@@ -183,6 +188,10 @@ class VoxCPMService:
 
         out_tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False).name
 
+        # Calculate dynamic max token limit based on text length (prevents 4096-token runaway hang)
+        char_count = len(prompt_text_to_synthesize)
+        synth_max_len = max(150, min(1500, int(char_count * 3.5) + 100))
+
         if ref_path and prompt_text:
             # Ultimate Voice Cloning (Exact phonetic and acoustic alignment: 95%+ match)
             wav_data = self.model.generate(
@@ -193,6 +202,7 @@ class VoxCPMService:
                 inference_timesteps=timesteps,
                 cfg_value=cfg_val,
                 denoise=False,
+                max_len=synth_max_len,
             )
             os.remove(ref_path)
         elif ref_path:
@@ -203,6 +213,7 @@ class VoxCPMService:
                 inference_timesteps=timesteps,
                 cfg_value=cfg_val,
                 denoise=False,
+                max_len=synth_max_len,
             )
             os.remove(ref_path)
         else:
@@ -211,6 +222,7 @@ class VoxCPMService:
                 text=prompt_text_to_synthesize,
                 inference_timesteps=timesteps,
                 cfg_value=cfg_val,
+                max_len=synth_max_len,
             )
 
         sf.write(out_tmp, wav_data, self.sample_rate)
