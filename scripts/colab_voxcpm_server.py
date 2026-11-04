@@ -101,11 +101,12 @@ def clone_voice(req: CloneRequest) -> dict[str, str]:
         preview_path = ref_path.replace(".wav", "_preview.wav")
         text = req.preview_text or "Hello! This is a preview of your cloned voice."
 
-        # Zero-shot voice cloning with VoxCPM
+        # Zero-shot voice cloning with VoxCPM (10 timesteps for high speed & quality)
         wav_data = model.generate(
             text=text,
             reference_wav_path=ref_path,
             denoise=True,
+            inference_timesteps=10,
         )
         sf.write(preview_path, wav_data, sample_rate)
 
@@ -144,11 +145,12 @@ def synthesize(req: SynthesizeRequest):
             wav_data = model.generate(
                 text=prompt_text,
                 reference_wav_path=ref_path,
-                denoise=True,
+                denoise=False,
+                inference_timesteps=10,
             )
             os.remove(ref_path)
         else:
-            wav_data = model.generate(text=prompt_text)
+            wav_data = model.generate(text=prompt_text, inference_timesteps=10)
 
         sf.write(out_tmp, wav_data, sample_rate)
         with open(out_tmp, "rb") as f:
@@ -180,7 +182,7 @@ def design_voice(req: DesignRequest) -> dict[str, str]:
         formatted_prompt = f"({control_str}) {preview_text}" if control_str else preview_text
 
         out_tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False).name
-        wav_data = model.generate(text=formatted_prompt)
+        wav_data = model.generate(text=formatted_prompt, inference_timesteps=10)
         sf.write(out_tmp, wav_data, sample_rate)
 
         with open(out_tmp, "rb") as f:
@@ -219,3 +221,4 @@ def run():
 
 if __name__ == "__main__":
     run()
+

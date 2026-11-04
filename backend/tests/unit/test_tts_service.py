@@ -157,6 +157,7 @@ def tts_fixtures():
         usage_service=usage_service,
         inference_engine=inference,
         job_service=job_service,
+        async_char_threshold=250,
     )
 
     api_key = ApiKey(

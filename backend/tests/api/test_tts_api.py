@@ -51,8 +51,8 @@ async def test_tts_and_jobs_api_full_flow(async_client: AsyncClient) -> None:
     assert "X-Audio-Duration" in sync_resp.headers
     assert len(sync_resp.content) > 100
 
-    # 4. Asynchronous TTS Request (>= 250 characters)
-    long_text = "អត្ថបទវែង សម្រាប់ធ្វើតេស្តការងារផ្ទៃខាងក្រោយ " * 10
+    # 4. Asynchronous TTS Request (>= 2000 characters)
+    long_text = "អត្ថបទវែង សម្រាប់ធ្វើតេស្តការងារផ្ទៃខាងក្រោយ " * 60
     async_resp = await async_client.post(
         "/api/v1/tts",
         json={

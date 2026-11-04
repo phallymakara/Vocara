@@ -191,6 +191,7 @@ class Container:
             usage_service=self.get_usage_service(session),
             inference_engine=inference,
             job_service=self.get_job_service(session),
+            async_char_threshold=getattr(self.settings, "ASYNC_CHAR_THRESHOLD", 2000),
         )
 
     def get_webhook_service(self, session: AsyncSession) -> WebhookService:

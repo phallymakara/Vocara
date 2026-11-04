@@ -38,9 +38,9 @@ async def test_async_tts_worker_lifecycle_e2e(async_client: AsyncClient) -> None
         await voice_repo.create(voice)
         await session.commit()
 
-    # 3. Submit long text (> 250 characters) to trigger asynchronous job routing
-    long_text = "Vocara Voice API Platform delivers real-time voice cloning and Khmer TTS. " * 5
-    assert len(long_text) > 250
+    # 3. Submit long text (> 2000 characters) to trigger asynchronous job routing
+    long_text = "Vocara Voice API Platform delivers real-time voice cloning and Khmer TTS. " * 30
+    assert len(long_text) > 2000
 
     tts_resp = await async_client.post(
         "/api/v1/tts",

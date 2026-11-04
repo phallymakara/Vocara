@@ -7,7 +7,7 @@ from vocara.domain.ports import InferenceEngine, VoiceRepository
 from vocara.services.job_service import JobService
 from vocara.services.usage_service import UsageService
 
-ASYNC_CHAR_THRESHOLD = 250
+ASYNC_CHAR_THRESHOLD = 2000
 
 
 class TtsService:
@@ -21,11 +21,13 @@ class TtsService:
         usage_service: UsageService,
         inference_engine: InferenceEngine,
         job_service: JobService,
+        async_char_threshold: int = ASYNC_CHAR_THRESHOLD,
     ) -> None:
         self.voice_repo = voice_repo
         self.usage_service = usage_service
         self.inference_engine = inference_engine
         self.job_service = job_service
+        self.async_char_threshold = async_char_threshold
 
     async def synthesize_or_enqueue(
         self,
@@ -58,7 +60,7 @@ class TtsService:
             raise VoiceNotFoundError(voice_id)
 
         # 3. Dynamic routing decision
-        is_async = async_only or (char_count >= ASYNC_CHAR_THRESHOLD)
+        is_async = async_only or (char_count >= self.async_char_threshold)
 
         if not is_async:
             # Synchronous Real-Time Generation

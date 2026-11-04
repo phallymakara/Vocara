@@ -69,6 +69,7 @@ class Settings(BaseSettings):
     # Rate Limiting & Quotas
     DEFAULT_RATE_LIMIT_PER_MINUTE: int = 60
     DEFAULT_CHAR_QUOTA_PER_MONTH: int = 100000
+    ASYNC_CHAR_THRESHOLD: int = 2000
 
     # Background Worker
     WORKER_QUEUE_NAME: str = "jobs:inference"
