@@ -1,12 +1,37 @@
-# Byte-compiled / optimized / DLL files
+# ==============================================================================
+# VOCARA PLATFORM - GITIGNORE
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Environment & Secret Configuration
+# ------------------------------------------------------------------------------
+# Ignore all .env files containing local configurations and secret credentials
+.env
+.env.*
+*.env
+*.env.*
+# Keep template example files tracked for developers
+!.env.example
+!*.env.example
+!backend/.env.example
+!frontend/.env.example
+
+# Certificates & Private Keys
+*.pem
+*.key
+*.cert
+*.crt
+*.pfx
+*.p12
+
+# ------------------------------------------------------------------------------
+# 2. Python & Virtual Environments
+# ------------------------------------------------------------------------------
 __pycache__/
+*/__pycache__/
 *.py[cod]
 *$py.class
-
-# C extensions
 *.so
-
-# Distribution / packaging
 .Python
 build/
 develop-eggs/
@@ -25,30 +50,100 @@ wheels/
 *.egg
 
 # Virtual environments
-.env
-.venv
+.venv/
+*/.venv/
 env/
+*/env/
 venv/
+*/venv/
 ENV/
 env.bak/
 venv.bak/
 
-# IDE files
-.vscode/
-.idea/
-*.swp
-*.swo
+# ------------------------------------------------------------------------------
+# 3. Node.js & Frontend Build Outputs
+# ------------------------------------------------------------------------------
+node_modules/
+*/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+dist/
+*/dist/
+*.tsbuildinfo
+frontend/tsconfig.tsbuildinfo
+.eslintcache
+.stylelintcache
 
-# Testing & Coverage
-.pytest_cache/
-.coverage
-htmlcov/
-.mypy_cache/
-.ruff_cache/
+# ------------------------------------------------------------------------------
+# 4. Databases & SQLite Storage
+# ------------------------------------------------------------------------------
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+vocara.db
+backend/vocara.db
+test_mcp.db
+backend/test_mcp.db
 
-# Audio / local storage / temporary files
-storage_local/
+# ------------------------------------------------------------------------------
+# 5. Audio Media & Local Object Storage
+# ------------------------------------------------------------------------------
 *.wav
 *.mp3
 *.flac
 *.ogg
+*.m4a
+*.aac
+*.pcm
+storage_local/
+test_storage/
+test_storage_*/
+temp_st/
+backend/storage_local/
+backend/test_storage/
+backend/test_storage_*/
+backend/temp_st/
+
+# ------------------------------------------------------------------------------
+# 6. Testing, Quality & Code Analysis Caches
+# ------------------------------------------------------------------------------
+.pytest_cache/
+*/.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+*/.mypy_cache/
+.ruff_cache/
+*/.ruff_cache/
+
+# ------------------------------------------------------------------------------
+# 7. IDEs & Text Editors
+# ------------------------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# ------------------------------------------------------------------------------
+# 8. Operating System Temporary Files
+# ------------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+[Tt]humbs.db
+[Ee]hthumbs.db
+[Dd]esktop.ini
+
+# ------------------------------------------------------------------------------
+# 9. AI Agent Workspace & Scratch Artifacts
+# ------------------------------------------------------------------------------
+.gemini/
+*/.gemini/

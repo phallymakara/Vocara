@@ -1,193 +1,199 @@
-# Vocara
+# Vocara - Voice API Platform
 
 Vocara is a developer-facing Voice API platform for text-to-speech (TTS), consent-verified voice cloning, voice variation design, and voice library management. It provides a unified, secure interface allowing developers to integrate speech capabilities into products without hosting voice AI infrastructure.
-
-## Core Capabilities
-
-- Text-to-Speech (TTS): Dynamic routing between real-time streaming (< 250 chars) and asynchronous background processing (>= 250 chars).
-- Voice Cloning: High-fidelity voice replication from audio samples with mandatory explicit consent confirmation.
-- Voice Variation Design: Derive customized voice profiles (adjusting pitch, speed, emotion, style) starting from existing base voices.
-- Voice Library Management: Multi-tenant voice catalog supporting built-in public voices and developer private voices.
-- Developer Access: API key lifecycle management, per-key usage tracking, rate limiting, and monthly quotas.
-- Asynchronous Background Worker: Dedicated queue worker processing speech synthesis tasks, uploading audio artifacts, and dispatching signed webhooks.
-- Developer Webhooks: Cryptographically signed (HMAC-SHA256) event delivery for job status notifications.
-- System Discovery: Catalogs for supported languages and audio formats.
-
-## System Architecture
-
-Vocara adheres to Hexagonal Architecture (Ports and Adapters) and Object-Oriented design principles:
-
-- Domain (`src/vocara/domain`): Pure business logic entities, enumerations, and Protocol interfaces (Ports). Contains zero framework dependencies.
-- Services (`src/vocara/services`): Use-case business logic coordinating repositories, storage, and inference adapters through ports.
-- Infrastructure (`src/vocara/infrastructure`): Concrete adapters implementing domain ports:
-  - Database: PostgreSQL with SQLAlchemy 2 (async) and generic BaseRepository.
-  - Storage: Local filesystem, Azure Blob Storage, and Cloudflare R2 / S3.
-  - Inference: VoxCPM serverless adapter (Modal) and local fake engine for zero-cost testing.
-  - Queue: Redis-backed task queue with in-memory fallback for asynchronous jobs.
-- API Layer (`src/vocara/api`): FastAPI HTTP endpoints, request/response validation schemas, and middlewares.
-- Worker (`src/vocara/worker`): Background task consumer executing long-form synthesis jobs and sending webhooks.
-
-## Prerequisites
-
-- Python >= 3.11
-- uv >= 0.4.0
-- Docker and Docker Compose (for PostgreSQL and Redis services)
-
-## Getting Started
-
-### 1. Environment Setup
-
-Clone the repository and create your local environment file:
-
-```bash
-cp .env.example .env
-```
-
-Review `.env` and adjust database credentials, storage backend, or logging options as needed.
-
-### 2. Dependency Installation
-
-Sync all project dependencies and virtual environment using uv:
-
-```bash
-uv sync --all-extras
-```
-
-### 3. Start Backing Services
-
-Start local PostgreSQL and Redis containers:
-
-```bash
-docker-compose up -d postgres redis
-```
-
-Run database schema migrations:
-
-```bash
-uv run alembic upgrade head
-```
-
-### 4. Run Application
-
-Start the Vocara API server:
-
-```bash
-uv run vocara
-```
-
-Start the Vocara background inference worker:
-
-```bash
-uv run vocara-worker
-```
-
-The API service starts on `http://0.0.0.0:8000`. When `DEBUG=true`, interactive documentation is available at:
-- Swagger UI: `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
-
-## REST API Reference
-
-All protected endpoints accept authentication via `Authorization: Bearer <api_key>` or `X-API-Key: <api_key>`.
-
-### Authentication and Keys
-
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | `/api/v1/keys` | Create a developer API key (returns raw key once) |
-| GET | `/api/v1/keys` | List active developer API keys |
-| DELETE | `/api/v1/keys/{key_id}` | Revoke an API key |
-
-### Usage Metering
-
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/api/v1/usage` | Retrieve monthly character quota and consumption stats |
-
-### Voice Library and Audio
-
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/api/v1/voices` | List accessible built-in and private voices |
-| GET | `/api/v1/voices/{id}` | Get voice profile details |
-| PATCH | `/api/v1/voices/{id}` | Update custom voice metadata |
-| DELETE | `/api/v1/voices/{id}` | Soft-delete a custom voice |
-| GET | `/api/v1/voices/{id}/preview` | Stream sample preview audio |
-| POST | `/api/v1/voices/clone` | Clone a voice (requires audio file and consent confirmation) |
-| POST | `/api/v1/voices/design` | Create a derivative voice variation from a base voice |
-
-### Speech Synthesis and Jobs
-
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | `/api/v1/tts` | Convert text to speech (200 stream for < 250 chars, 202 job for >= 250 chars) |
-| GET | `/api/v1/jobs` | List recent speech generation jobs |
-| GET | `/api/v1/jobs/{id}` | Check job status (queued, processing, completed, failed) |
-| GET | `/api/v1/jobs/{id}/result` | Download synthesized audio result |
-
-### Webhooks
-
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | `/api/v1/webhooks` | Register a webhook callback URL |
-| GET | `/api/v1/webhooks` | List registered webhook subscriptions |
-| DELETE | `/api/v1/webhooks/{id}` | Revoke a webhook subscription |
-
-### System Discovery
-
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/api/v1/system/languages` | List supported languages and voice counts |
-| GET | `/api/v1/system/formats` | List audio formats and encoding specifications |
-
-## Development and Verification
-
-Execute testing, linting, and quality verification tasks via `uv`:
-
-- Run Test Suite:
-  ```bash
-  uv run pytest
-  ```
-
-- Run Linter:
-  ```bash
-  uv run ruff check src/ tests/
-  ```
-
-- Run Code Formatting Check:
-  ```bash
-  uv run ruff format --check src/ tests/
-  ```
-
-- Static Type Checking:
-  ```bash
-  uv run mypy src/
-  ```
 
 ## Project Structure
 
 ```text
 Vocara/
-├── .github/
-│   └── workflows/
-│       └── ci.yml                    # Automated GitHub Actions CI pipeline
-├── migrations/                       # Alembic schema migrations
-├── src/vocara/
-│   ├── main.py                       # App factory create_app() and run() entrypoint
-│   ├── container.py                  # Single Composition Root (dependency wiring)
-│   ├── core/                         # Config, logging, security, domain errors
-│   ├── domain/                       # Pure entities, enums, and Protocol ports
-│   ├── services/                     # Application business logic services
-│   ├── infrastructure/               # Database, storage, queue, and inference adapters
-│   ├── api/                          # Endpoints, schemas, dependencies, middlewares
-│   ├── worker/                       # Background queue worker process and handler
-│   └── utils/                        # Audio validation, normalization, and tone generator
-├── tests/
-│   ├── api/                          # API endpoint integration test suites
-│   ├── integration/                  # Database repository and worker pipeline tests
-│   └── unit/                         # Domain service, utility, and adapter unit tests
-├── pyproject.toml                    # Package definition and script commands
-├── docker-compose.yml                # Local services orchestration (API, worker, db, redis)
-├── Dockerfile                        # Production container build
-├── Makefile                          # Task runner shortcuts
-└── .env.example                      # Configuration template
+├── backend/                  # Python FastAPI Backend
+│   ├── src/vocara/           # Hexagonal application source
+│   ├── migrations/           # Alembic database migrations
+│   ├── tests/                # Pytest unit, integration, and API test suites
+│   ├── worker/               # Background queue worker
+│   ├── pyproject.toml        # Backend dependencies and CLI entrypoints
+│   ├── Dockerfile            # Container build
+│   └── .env.example          # Backend configuration template
+├── frontend/                 # React 19 + TypeScript + Vite Web Console
+│   ├── src/                  # Components, pages, typed API client
+│   ├── package.json          # Frontend dependencies
+│   └── vite.config.ts        # Vite configuration and proxy
+├── docker-compose.yml        # Multi-container local deployment
+└── Makefile                  # Task automation shortcuts
+```
+
+## Prerequisites
+
+- Python >= 3.11
+- uv >= 0.4.0
+- Node.js >= 20.0.0
+- npm >= 10.0.0
+
+## Quick Start
+
+### 1. Start the Backend API
+
+```bash
+cd backend
+uv sync --all-extras
+uv run vocara
+```
+
+The backend API server will start at `http://127.0.0.1:8002`. Interactive documentation is available at `http://127.0.0.1:8002/docs`.
+
+### 2. Start the Frontend Console
+
+In a separate terminal:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The frontend web console will be accessible at `http://localhost:3000`.
+
+### 3. Start the Background Worker (Optional for long-form speech)
+
+```bash
+cd backend
+uv run vocara-worker
+```
+
+## Model Context Protocol (MCP) Integration
+
+Vocara provides native Model Context Protocol (MCP) server support, allowing external AI assistants (Cursor IDE, Claude Desktop, autonomous LLM agents) and external developer services to discover voices and synthesize speech directly.
+
+### Connection Transports
+
+Vocara supports two MCP transports:
+
+1. **Remote SSE Transport (Recommended)**: For network-accessible agents, web services, and Cursor IDE.
+   - Endpoint: `http://localhost:8002/mcp/sse?api_key=voc_YOUR_API_KEY`
+   - Messages: `http://localhost:8002/mcp/messages/`
+2. **Local Stdio Transport**: For Claude Desktop running as a local command.
+   - Command: `uv run vocara-mcp` inside `backend/`
+
+---
+
+### Client Configuration
+
+#### 1. Cursor IDE (`.cursor/mcp.json`)
+
+```json
+{
+  "mcpServers": {
+    "vocara": {
+      "url": "http://localhost:8002/mcp/sse?api_key=voc_YOUR_API_KEY"
+    }
+  }
+}
+```
+
+#### 2. Claude Desktop (`claude_desktop_config.json`)
+
+```json
+{
+  "mcpServers": {
+    "vocara": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "<path-to-vocara>/backend",
+        "run",
+        "vocara-mcp"
+      ],
+      "env": {
+        "VOCARA_API_KEY": "voc_YOUR_API_KEY"
+      }
+    }
+  }
+}
+```
+
+#### 3. Python Client (`mcp` library)
+
+```python
+import asyncio
+from mcp import ClientSession
+from mcp.client.sse import sse_client
+
+async def main():
+    url = "http://localhost:8002/mcp/sse?api_key=voc_YOUR_API_KEY"
+    async with sse_client(url) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+
+            # 1. Discover available voices
+            voices = await session.call_tool("vocara_list_voices", {"language": "km"})
+            print("Voices:", voices)
+
+            # 2. Synthesize speech
+            result = await session.call_tool("vocara_generate_speech", {
+                "text": "សួស្តីពិភពលោក",
+                "voice_id": "voice-sophea-built-in",
+                "output_format": "mp3"
+            })
+            print("Synthesis result:", result)
+
+asyncio.run(main())
+```
+
+#### 4. TypeScript / Node Client (`@modelcontextprotocol/sdk`)
+
+```typescript
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+
+async function main() {
+  const transport = new SSEClientTransport(
+    new URL("http://localhost:8002/mcp/sse?api_key=voc_YOUR_API_KEY")
+  );
+
+  const client = new Client(
+    { name: "vocara-agent", version: "1.0.0" },
+    { capabilities: {} }
+  );
+
+  await client.connect(transport);
+
+  // List voices
+  const voices = await client.callTool({
+    name: "vocara_list_voices",
+    arguments: { language: "all" },
+  });
+  console.log("Vocara voices:", voices);
+}
+
+main().catch(console.error);
+```
+
+---
+
+### Exposed MCP Tools & Resources
+
+| Name | Type | Description | Key Parameters |
+| :--- | :--- | :--- | :--- |
+| `vocara_list_voices` | Tool | List all accessible voices (built-in, designed, cloned) | `language` (e.g. `'km'`, `'en'`, `'all'`), `voice_type` |
+| `vocara_get_voice_details` | Tool | Retrieve full metadata and acoustic modifiers for a voice | `voice_id` (string) |
+| `vocara_preview_voice` | Tool | Retrieve base64-encoded WAV audio preview sample | `voice_id` (string) |
+| `vocara_generate_speech` | Tool | Synthesize text into high-fidelity neural speech | `text`, `voice_id`, `speed` (default 1.0), `output_format` (`mp3`/`wav`) |
+| `vocara://voices/catalog` | Resource | Dynamic live JSON catalog of all available voices | URI resource |
+
+---
+
+## Running Tests
+
+Execute test suite inside the backend directory:
+
+```bash
+cd backend
+uv run pytest
+```
+
+Execute frontend build check:
+
+```bash
+cd frontend
+npm run build
 ```

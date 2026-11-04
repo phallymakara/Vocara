@@ -3,7 +3,7 @@ version: '3.8'
 services:
   api:
     build:
-      context: .
+      context: ./backend
       dockerfile: Dockerfile
     container_name: vocara-api
     ports:
@@ -17,7 +17,7 @@ services:
       - LOCAL_STORAGE_DIR=/app/storage_local
       - INFERENCE_ENGINE_TYPE=fake
     volumes:
-      - ./src:/app/src
+      - ./backend/src:/app/src
       - local_storage:/app/storage_local
     depends_on:
       postgres:
@@ -27,7 +27,7 @@ services:
 
   worker:
     build:
-      context: .
+      context: ./backend
       dockerfile: Dockerfile
     container_name: vocara-worker
     command: ["vocara-worker"]
@@ -42,7 +42,7 @@ services:
       - WORKER_QUEUE_NAME=jobs:inference
       - WORKER_POLL_TIMEOUT_SECONDS=2
     volumes:
-      - ./src:/app/src
+      - ./backend/src:/app/src
       - local_storage:/app/storage_local
     depends_on:
       postgres:

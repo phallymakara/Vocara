@@ -13,26 +13,29 @@ help:
 	@echo "  make docker-down - Stop local services"
 
 sync:
-	uv sync --all-extras
+	cd backend && uv sync --all-extras
 
 dev:
-	uv run vocara
+	cd backend && uv run vocara
+
+dev-frontend:
+	cd frontend && npm run dev
 
 test:
-	uv run pytest -v tests/
+	cd backend && uv run pytest -v tests/
 
 lint:
-	uv run ruff check src/ tests/
+	cd backend && uv run ruff check src/ tests/
 
 format:
-	uv run ruff format src/ tests/
-	uv run ruff check --fix src/ tests/
+	cd backend && uv run ruff format src/ tests/
+	cd backend && uv run ruff check --fix src/ tests/
 
 typecheck:
-	uv run mypy src/
+	cd backend && uv run mypy src/
 
 migrate:
-	uv run alembic upgrade head
+	cd backend && uv run alembic upgrade head
 
 docker-up:
 	docker-compose up -d
