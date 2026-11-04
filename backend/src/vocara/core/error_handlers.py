@@ -74,7 +74,7 @@ def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(InvalidAudioError)
     async def handle_invalid_audio(_: Request, exc: InvalidAudioError) -> JSONResponse:
         return JSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             content={"error": {"code": exc.code, "message": exc.message}},
         )
 
