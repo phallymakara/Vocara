@@ -99,8 +99,9 @@ class ModalInferenceEngine(BaseInferenceEngine):
                 "reference_audio_base64": ref_audio_b64,
                 "prompt_audio_base64": ref_audio_b64,
                 "prompt_text": prompt_text,
-                "inference_timesteps": 20,
-                "cfg_value": 2.0,
+                "inference_timesteps": 22,
+                "cfg_value": 1.35,
+                "is_continuation": False,
             }
 
             resp = await client.post(url, json=payload, headers=self._get_headers())
@@ -120,6 +121,17 @@ class ModalInferenceEngine(BaseInferenceEngine):
                     duration = float(duration_header)
                 else:
                     duration = get_audio_duration_seconds(audio_bytes)
+
+            # Convert raw WAV to genuine MP3 if requested so HTML5 audio decodes authentically
+            if output_format == AudioFormat.MP3 and audio_bytes.startswith(b"RIFF"):
+                import io, soundfile as sf
+                try:
+                    wav_data, sr = sf.read(io.BytesIO(audio_bytes))
+                    mp3_buf = io.BytesIO()
+                    sf.write(mp3_buf, wav_data, sr, format="MP3")
+                    audio_bytes = mp3_buf.getvalue()
+                except Exception as err:
+                    logger.warning("mp3_conversion_failed", error=str(err))
 
             return audio_bytes, duration
 

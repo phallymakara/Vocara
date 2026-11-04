@@ -324,7 +324,7 @@ def reduce_noise_subtle(data: np.ndarray, sample_rate: int) -> np.ndarray:
 
 def preprocess_reference_audio(
     audio_bytes: bytes,
-    target_sample_rate: int = 24000,
+    target_sample_rate: int = 48000,
     enable_denoise: bool = True,
     enable_normalization: bool = False,
     min_duration: float = 0.5,

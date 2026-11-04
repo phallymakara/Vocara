@@ -91,6 +91,7 @@ async def test_modal_engine_generate_speech_binary_response(sample_voice: Voice)
     audio_bytes, duration = await engine.generate_speech(
         text="ការសាកល្បង",
         voice=sample_voice,
+        output_format=AudioFormat.WAV,
     )
 
     assert audio_bytes == raw_wav
