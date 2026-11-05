@@ -26,3 +26,4 @@ services:
 volumes:
   vocara_postgres_data:
     name: vocara_postgres_data
+

@@ -11,3 +11,4 @@ SET timezone = 'UTC';
 
 -- 3. Grant schema permissions to the default user
 GRANT ALL PRIVILEGES ON SCHEMA public TO vocara_user;
+

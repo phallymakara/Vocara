@@ -125,3 +125,4 @@ async def test_delete_not_found(mock_azure_client):
     result = await adapter.delete("audio/missing.mp3")
 
     assert result is False
+

@@ -107,3 +107,4 @@ class AzureBlobStorageAdapter(BlobStorage):
                 return False
 
         return await asyncio.to_thread(_delete)
+

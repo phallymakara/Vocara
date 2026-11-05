@@ -12,3 +12,4 @@ EXPOSE 5432
 
 # Declare volume mount point for persistent data storage
 VOLUME ["/var/lib/postgresql/data"]
+
