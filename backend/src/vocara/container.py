@@ -28,6 +28,7 @@ from vocara.infrastructure.inference.huggingface_engine import HuggingFaceInfere
 from vocara.infrastructure.inference.modal_engine import ModalInferenceEngine
 from vocara.infrastructure.inference.neural_engine import NeuralTtsEngine
 from vocara.infrastructure.queue.redis_queue import RedisJobQueue
+from vocara.infrastructure.storage.azure import AzureBlobStorageAdapter
 from vocara.infrastructure.storage.local import LocalStorageAdapter
 from vocara.services.auth_service import AuthService
 from vocara.services.job_service import JobService
@@ -103,7 +104,12 @@ class Container:
                     await session.commit()
 
         # Storage initialization
-        if self.settings.STORAGE_BACKEND == "local":
+        if self.settings.STORAGE_BACKEND == "azure" and self.settings.AZURE_STORAGE_CONNECTION_STRING:
+            self.storage = AzureBlobStorageAdapter(
+                connection_string=self.settings.AZURE_STORAGE_CONNECTION_STRING,
+                container_name=self.settings.AZURE_STORAGE_CONTAINER_NAME,
+            )
+        else:
             self.storage = LocalStorageAdapter(self.settings.LOCAL_STORAGE_DIR)
 
         # Queue initialization
