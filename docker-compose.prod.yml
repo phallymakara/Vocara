@@ -1,0 +1,119 @@
+# ==============================================================================
+# VOCARA PRODUCTION DOCKER COMPOSE ORCHESTRATION
+# ==============================================================================
+
+services:
+  # 1. Frontend Web Studio & Reverse Proxy Gateway
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: vocara-frontend-prod
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+    networks:
+      - vocara-prod-net
+
+  # 2. Production API Service (FastAPI / Multi-Worker Uvicorn)
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: vocara-api-prod
+    restart: unless-stopped
+    command: ["uvicorn", "vocara.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+    env_file:
+      - ./backend/.env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://vocara_user:vocara_password@postgres:5432/vocara_db
+      - REDIS_URL=redis://redis:6379/0
+      - ENVIRONMENT=production
+      - DEBUG=false
+    expose:
+      - "8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - vocara-prod-net
+
+  # 3. Asynchronous Inference Background Worker
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: vocara-worker-prod
+    restart: unless-stopped
+    command: ["vocara-worker"]
+    env_file:
+      - ./backend/.env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://vocara_user:vocara_password@postgres:5432/vocara_db
+      - REDIS_URL=redis://redis:6379/0
+      - ENVIRONMENT=production
+      - DEBUG=false
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - vocara-prod-net
+
+  # 4. PostgreSQL Database
+  postgres:
+    build:
+      context: ./docker/postgres
+      dockerfile: Dockerfile
+    container_name: vocara-postgres-prod
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=vocara_user
+      - POSTGRES_PASSWORD=vocara_password
+      - POSTGRES_DB=vocara_db
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - vocara_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vocara_user -d vocara_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - vocara-prod-net
+
+  # 5. Redis Queue & Cache
+  redis:
+    image: redis:7-alpine
+    container_name: vocara-redis-prod
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - vocara_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - vocara-prod-net
+
+volumes:
+  vocara_postgres_data:
+    name: vocara_postgres_data
+  vocara_redis_data:
+    name: vocara_redis_data
+
+networks:
+  vocara-prod-net:
+    name: vocara-prod-net

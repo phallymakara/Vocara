@@ -111,3 +111,4 @@ def test_cors_origins_list_passthrough():
         CORS_ORIGINS=["http://localhost:3000", "https://app.vocara.ai"],
     )
     assert settings.CORS_ORIGINS == ["http://localhost:3000", "https://app.vocara.ai"]
+
