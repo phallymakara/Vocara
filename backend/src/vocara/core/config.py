@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     # Security
     API_KEY_SALT: str = Field(default="dev-salt-change-in-production")
     SECRET_KEY: str = Field(default="dev-secret-change-in-production")
-    CORS_ORIGINS: list[str] = Field(
+    CORS_ORIGINS: list[str] | str = Field(
         default_factory=lambda: ["http://localhost:3000", "http://127.0.0.1:3000"]
     )
 
@@ -85,11 +85,21 @@ class Settings(BaseSettings):
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def parse_cors_origins(cls, value: object) -> list[str]:
-        """Support comma-separated strings or string lists for CORS origins."""
+        """Support JSON arrays, comma-separated strings, or string lists for CORS origins."""
+        import json
+
         if isinstance(value, str):
-            if not value.strip():
+            val = value.strip()
+            if not val:
                 return []
-            return [origin.strip() for origin in value.split(",") if origin.strip()]
+            if val.startswith("[") and val.endswith("]"):
+                try:
+                    parsed = json.loads(val)
+                    if isinstance(parsed, list):
+                        return [str(origin).strip() for origin in parsed if str(origin).strip()]
+                except Exception:
+                    pass
+            return [origin.strip() for origin in val.split(",") if origin.strip()]
         if isinstance(value, (list, tuple, set)):
             return [str(origin).strip() for origin in value if str(origin).strip()]
         return ["http://localhost:3000", "http://127.0.0.1:3000"]
