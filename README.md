@@ -175,6 +175,28 @@ uv run vocara-worker
 
 ---
 
+### 5. Production Deployment (Docker Compose)
+
+To deploy the entire production stack (Frontend Nginx, Multi-Worker FastAPI, Background Worker, PostgreSQL 16, and Redis 7) using Docker:
+
+```bash
+# 1. Build and start all production containers in the background
+docker compose -f docker-compose.prod.yml up -d --build
+
+# 2. View running containers
+docker compose -f docker-compose.prod.yml ps
+
+# 3. View live logs
+docker compose -f docker-compose.prod.yml logs -f api
+```
+
+Once running:
+- Web Console: `http://localhost/` (Port 80)
+- API Endpoint: `http://localhost/api/v1`
+- Model Context Protocol (MCP): `http://localhost/mcp/sse`
+
+---
+
 ## Usage & Examples
 
 ### Synthesize Speech via cURL
