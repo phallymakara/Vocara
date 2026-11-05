@@ -96,6 +96,9 @@ class FakeInferenceEngine(BaseInferenceEngine):
         self,
         reference_audio_bytes: bytes,
         language: str = "km-KH",
+        prompt_text: str | None = None,
+        voice_id: str | None = None,
+        **kwargs: Any,
     ) -> tuple[str, bytes]:
         """Simulate extracting vocal embeddings and producing a preview sample."""
         feature_token = f"emb_{uuid.uuid4().hex[:16]}"

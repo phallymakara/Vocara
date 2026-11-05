@@ -46,6 +46,7 @@ image = (
     timeout=300,
     scaledown_window=900,  # Stays warm for 15 minutes after last request (0s startup during testing!)
 )
+@modal.concurrent(max_inputs=10)
 class VoxCPMService:
     @modal.enter()
     def load_model(self):
@@ -77,64 +78,164 @@ class VoxCPMService:
         import soundfile as sf
 
         audio_b64 = req.get("audio_base64", "")
-        # Synthesize ONLY and STRICTLY the exact preview text
-        preview_text = (req.get("preview_text") or "Hello! This is a preview of your cloned voice.").strip()
+        voice_id = req.get("voice_id")
+        token = voice_id or f"voxcpm_{uuid.uuid4().hex[:12]}"
         prompt_text = (req.get("prompt_text") or "").strip()
 
         ref_bytes = base64.b64decode(audio_b64)
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as ref_tmp:
-            ref_tmp.write(ref_bytes)
-            ref_path = ref_tmp.name
+        cached_file = f"/tmp/vocara_voice_{token}.wav"
+        with open(cached_file, "wb") as f:
+            f.write(ref_bytes)
 
-        # Cap max_len dynamically to prevent runaway generation loops
-        preview_max_len = max(100, min(500, int(len(preview_text) * 3) + 80))
+        # Cache reference directly in container memory for instant zero-shot synthesis
+        self.voice_cache[token] = cached_file
+        if voice_id:
+            self.voice_cache[voice_id] = cached_file
 
-        # Phase 3 & 4: Inference mode & calibrated 12 timesteps on A100
-        with torch.inference_mode():
-            if prompt_text:
-                wav_data = self.model.generate(
-                    text=preview_text,
-                    prompt_wav_path=ref_path,
-                    prompt_text=prompt_text,
-                    reference_wav_path=ref_path,
-                    inference_timesteps=12,
-                    cfg_value=1.8,
-                    denoise=False,
-                    max_len=preview_max_len,
-                )
-            else:
-                wav_data = self.model.generate(
-                    text=preview_text,
-                    reference_wav_path=ref_path,
-                    inference_timesteps=12,
-                    cfg_value=1.8,
-                    denoise=False,
-                    max_len=preview_max_len,
-                )
-
-        # Phase 1: Direct in-memory buffer output (zero disk write/read overhead)
-        buf = io.BytesIO()
-        sf.write(buf, wav_data, self.sample_rate, format="WAV")
-        preview_bytes = buf.getvalue()
-
-        # Cache reference audio by token for instant subsequent synthesis
-        token = f"voxcpm_{uuid.uuid4().hex[:12]}"
-        cached_file = f"/tmp/vocara_ref_{token}.wav"
-        try:
-            os.rename(ref_path, cached_file)
-            self.voice_cache[token] = cached_file
-        except Exception:
+        # Maintain LRU cap of 50 active voices in container memory
+        if len(self.voice_cache) > 50:
+            oldest_id, oldest_path = next(iter(self.voice_cache.items()))
             try:
-                os.remove(ref_path)
+                os.remove(oldest_path)
             except Exception:
                 pass
+            del self.voice_cache[oldest_id]
 
-        preview_b64 = base64.b64encode(preview_bytes).decode("utf-8")
+        preview_b64 = None
+        # Optional: generate synthetic preview only if explicitly requested
+        if req.get("generate_preview", False):
+            preview_text = (req.get("preview_text") or "Hello! This is a preview of your cloned voice.").strip()
+            preview_max_len = max(100, min(500, int(len(preview_text) * 3) + 80))
+            with torch.inference_mode():
+                wav_data = self.model.generate(
+                    text=preview_text,
+                    reference_wav_path=cached_file,
+                    inference_timesteps=12,
+                    cfg_value=1.8,
+                    denoise=False,
+                    max_len=preview_max_len,
+                )
+            buf = io.BytesIO()
+            sf.write(buf, wav_data, self.sample_rate, format="MP3")
+            preview_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+
         return {
             "feature_token": token,
             "preview_base64": preview_b64,
             "prompt_text": prompt_text,
+            "status": "cached",
         }
+
+    @staticmethod
+    def _normalize_speech_text(text: str) -> str:
+        """Normalize spaces, dashes, and punctuation to ensure natural, connected human tone without dashing."""
+        import re
+
+        if not text:
+            return ""
+
+        text = text.strip()
+        # Convert harsh typographical dashes/hyphens that cause staccato stops into natural conversational commas
+        text = re.sub(r"\s*[-—–~]+\s*", ", ", text)
+        # Collapse multiple consecutive spaces to a single clean space
+        text = re.sub(r"[ \t]+", " ", text)
+        # Remove awkward spaces before punctuation marks
+        text = re.sub(r"\s+([។៕.!?,;:])", r"\1", text)
+        # Ensure single space after punctuation for natural breathing pacing
+        text = re.sub(r"([។៕.!?,;:])(?=[^\s\d])", r"\1 ", text)
+        return text.strip()
+
+    @staticmethod
+    def _split_into_speech_chunks(text: str, max_chunk_chars: int = 180) -> list[str]:
+        """Split text strictly on primary sentence boundaries so words with spaces flow as one fluid human phrase."""
+        import re
+
+        text = text.strip()
+        if not text:
+            return []
+
+        # Split strictly on primary sentence boundaries (Khmer: ។, ៕; Western: ., !, ?, \n)
+        # Never split on spaces inside a sentence, so words flow naturally without dashing or stuttering!
+        boundary_pattern = r"([។៕.!?\n]+)"
+        tokens = re.split(boundary_pattern, text)
+
+        sentences = []
+        current = ""
+        for token in tokens:
+            if not token:
+                continue
+            if re.match(boundary_pattern, token):
+                current += token
+                if current.strip():
+                    sentences.append(current.strip())
+                    current = ""
+            else:
+                if current:
+                    sentences.append(current.strip())
+                    current = ""
+                current = token
+        if current.strip():
+            sentences.append(current.strip())
+
+        # If an individual sentence is extraordinarily long (>180 chars without any full stop),
+        # only sub-split at natural clause breaks (commas, semicolons), never on standard spaces!
+        final_chunks = []
+        for s in sentences:
+            if len(s) <= max_chunk_chars:
+                final_chunks.append(s)
+                continue
+
+            clause_tokens = re.split(r"([,;]+)", s)
+            buf = ""
+            for ct in clause_tokens:
+                if len(buf) + len(ct) <= max_chunk_chars:
+                    buf += ct
+                else:
+                    if buf.strip():
+                        final_chunks.append(buf.strip())
+                    buf = ct
+            if buf.strip():
+                final_chunks.append(buf.strip())
+
+        safe_chunks = []
+        for c in final_chunks:
+            if len(c) <= max_chunk_chars:
+                safe_chunks.append(c)
+            else:
+                for i in range(0, len(c), max_chunk_chars):
+                    safe_chunks.append(c[i : i + max_chunk_chars])
+
+        return [c for c in safe_chunks if c.strip()]
+
+    @staticmethod
+    def _stitch_audio_chunks(chunks: list, sample_rate: int, pause_ms: int = 120):
+        """Crossfade and stitch audio chunks smoothly to eliminate boundary clicks and robotic pauses."""
+        import numpy as np
+
+        if not chunks:
+            return np.array([], dtype=np.float32)
+        if len(chunks) == 1:
+            return chunks[0]
+
+        pause_samples = int(sample_rate * (pause_ms / 1000.0))
+        fade_len = min(256, pause_samples // 2)
+        fade_out = np.linspace(1.0, 0.0, fade_len, dtype=np.float32)
+        fade_in = np.linspace(0.0, 1.0, fade_len, dtype=np.float32)
+        silence = np.zeros(pause_samples, dtype=np.float32)
+
+        pieces = []
+        for i, c in enumerate(chunks):
+            chunk_copy = c.copy()
+            if len(chunk_copy) > fade_len:
+                if i > 0:
+                    chunk_copy[:fade_len] *= fade_in
+                if i < len(chunks) - 1:
+                    chunk_copy[-fade_len:] *= fade_out
+            pieces.append(chunk_copy)
+            if i < len(chunks) - 1:
+                pieces.append(silence)
+
+        return np.concatenate(pieces)
 
     def _synthesize(self, req: dict) -> dict:
         import base64
@@ -146,7 +247,7 @@ class VoxCPMService:
         import soundfile as sf
         from fastapi import HTTPException
 
-        input_text = (req.get("inputs") or req.get("text") or req.get("raw_text") or "Hello from Vocara.").strip()
+        raw_text = (req.get("inputs") or req.get("text") or req.get("raw_text") or "Hello from Vocara.").strip()
         voice_id = req.get("voice_id")
         ref_b64 = req.get("reference_audio_base64") or req.get("prompt_audio_base64")
 
@@ -179,32 +280,52 @@ class VoxCPMService:
             # Voice requested from cache but not present (container cold restart) -> prompt client to upload
             raise HTTPException(status_code=404, detail="voice_cache_miss")
 
-        # Dynamic max token limit based on exact text length (prevents runaway hang)
-        char_count = len(input_text)
-        synth_max_len = max(150, min(1500, int(char_count * 3.5) + 100))
+        # Phase 5: Text normalization for smooth human tone (never dash at spaces or hyphens)
+        clean_text = self._normalize_speech_text(raw_text)
+        chunks = self._split_into_speech_chunks(clean_text, max_chunk_chars=180)
+        if not chunks:
+            chunks = [clean_text]
+
+        raw_audio_chunks = []
 
         # Phase 3: TensorFloat-32 + Inference Mode Execution
         with torch.inference_mode():
-            if ref_path:
-                wav_data = self.model.generate(
-                    text=input_text,
-                    reference_wav_path=ref_path,
-                    inference_timesteps=timesteps,
-                    cfg_value=cfg_val,
-                    denoise=False,
-                    max_len=synth_max_len,
-                )
-            else:
-                wav_data = self.model.generate(
-                    text=input_text,
-                    inference_timesteps=timesteps,
-                    cfg_value=cfg_val,
-                    max_len=synth_max_len,
-                )
+            for chunk in chunks:
+                chunk_len = len(chunk)
+                synth_max_len = max(100, min(700, int(chunk_len * 3.5) + 80))
+                if ref_path:
+                    chunk_audio = self.model.generate(
+                        text=chunk,
+                        reference_wav_path=ref_path,
+                        inference_timesteps=timesteps,
+                        cfg_value=cfg_val,
+                        denoise=False,
+                        max_len=synth_max_len,
+                    )
+                else:
+                    chunk_audio = self.model.generate(
+                        text=chunk,
+                        inference_timesteps=timesteps,
+                        cfg_value=cfg_val,
+                        max_len=synth_max_len,
+                    )
+                raw_audio_chunks.append(chunk_audio)
 
-        # Phase 1: Direct in-memory buffer output (zero disk write/read overhead)
+        # Smooth, natural crossfaded stitching between primary sentences
+        wav_data = self._stitch_audio_chunks(raw_audio_chunks, self.sample_rate, pause_ms=120)
+
+        # Phase 1: Direct in-memory buffer output with format negotiation (zero disk write/read overhead)
         buf = io.BytesIO()
-        sf.write(buf, wav_data, self.sample_rate, format="WAV")
+        req_fmt = (req.get("output_format") or "mp3").lower()
+        if req_fmt == "mp3":
+            try:
+                sf.write(buf, wav_data, self.sample_rate, format="MP3")
+            except Exception:
+                buf.seek(0)
+                buf.truncate()
+                sf.write(buf, wav_data, self.sample_rate, format="WAV")
+        else:
+            sf.write(buf, wav_data, self.sample_rate, format="WAV")
         audio_bytes = buf.getvalue()
 
         duration = len(wav_data) / float(self.sample_rate)
@@ -263,9 +384,11 @@ class VoxCPMService:
 
         class CloneRequest(BaseModel):
             audio_base64: str
+            voice_id: str | None = None
             language: str | None = "en"
             preview_text: str | None = "Hello! This is a preview of your newly cloned voice with Vocara."
             prompt_text: str | None = None
+            generate_preview: bool | None = False
 
         class SynthesizeRequest(BaseModel):
             inputs: str | None = None

@@ -163,8 +163,10 @@ class ModalInferenceEngine(BaseInferenceEngine):
         reference_audio_bytes: bytes,
         language: str = "km-KH",
         prompt_text: str | None = None,
+        voice_id: str | None = None,
+        generate_preview: bool = False,
     ) -> tuple[str, bytes, str]:
-        """Dispatch audio sample to serverless extractor for vocal embeddings and transcription."""
+        """Dispatch audio sample to serverless extractor for vocal caching and instant registration."""
         if not self.endpoint_url:
             raise InferenceServiceError("Modal inference endpoint URL is not configured.")
 
@@ -173,9 +175,11 @@ class ModalInferenceEngine(BaseInferenceEngine):
             url = f"{self.endpoint_url.rstrip('/')}/clone"
             payload = {
                 "audio_base64": base64.b64encode(reference_audio_bytes).decode("utf-8"),
+                "voice_id": voice_id,
                 "language": language,
                 "preview_text": DEFAULT_PREVIEW_TEXT,
                 "prompt_text": prompt_text,
+                "generate_preview": generate_preview,
             }
 
             resp = await client.post(url, json=payload, headers=self._get_headers())
@@ -189,6 +193,12 @@ class ModalInferenceEngine(BaseInferenceEngine):
             preview_b64 = data.get("preview_base64")
             preview_bytes = base64.b64decode(preview_b64) if preview_b64 else reference_audio_bytes
             detected_prompt = str(data.get("prompt_text") or prompt_text or "")
+
+            if voice_id:
+                self._cached_voices.add(voice_id)
+            if feature_token:
+                self._cached_voices.add(feature_token)
+
             return feature_token, preview_bytes, detected_prompt
 
         return await self._execute_with_retry("modal_clone_voice", _call)  # type: ignore[no-any-return]

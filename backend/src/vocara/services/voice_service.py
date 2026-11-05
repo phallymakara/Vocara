@@ -198,10 +198,12 @@ class VoiceService:
 
         if self.inference_engine:
             try:
-                # Attempt to pass prompt_text if supported by engine
                 try:
                     clone_res = await self.inference_engine.clone_voice(  # type: ignore[call-arg]
-                        normalized_wav, language=language, prompt_text=final_prompt_text
+                        normalized_wav,
+                        language=language,
+                        prompt_text=final_prompt_text,
+                        voice_id=voice_id,
                     )
                 except TypeError:
                     clone_res = await self.inference_engine.clone_voice(
@@ -252,26 +254,13 @@ class VoiceService:
             updated_at=now,
         )
 
-        # Synthesize canonical default preview script if not already synthesized during cloning
-        if self.inference_engine and preview_sample == normalized_wav:
-            try:
-                preview_text = get_preview_text_for_language(language)
-                generated_preview, _ = await self.inference_engine.generate_speech(
-                    text=preview_text,
-                    voice=voice,
-                    language=language,
-                    speed=1.0,
-                    output_format=AudioFormat.WAV,
-                    reference_audio_bytes=normalized_wav,
-                )
-                if generated_preview:
-                    preview_sample = generated_preview
-            except Exception:
-                pass
-
+        # Upload reference and preview audio to blob storage concurrently
         if self.storage:
-            await self.storage.upload(ref_key, normalized_wav, content_type="audio/wav")
-            await self.storage.upload(preview_key, preview_sample, content_type="audio/wav")
+            import asyncio
+            await asyncio.gather(
+                self.storage.upload(ref_key, normalized_wav, content_type="audio/wav"),
+                self.storage.upload(preview_key, preview_sample, content_type="audio/wav"),
+            )
 
         return await self.voice_repo.create(voice)
 
