@@ -1,4 +1,5 @@
 import React from "react";
+import { Link } from "react-router-dom";
 import { Search, Download, Trash2, Plus, Loader2 } from "lucide-react";
 import { useWebhookController } from "@/controllers/useWebhookController";
 import { Button } from "@/views/components/ui/button";
@@ -127,7 +128,17 @@ export const WebhooksJobsPage: React.FC = () => {
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 text-xs border-t border-border">
                 <div>
                   <span className="text-muted-foreground block">Voice ID</span>
-                  <span className="font-mono font-medium">{inspectedJob.voice_id?.slice(0, 8)}...</span>
+                  {inspectedJob.voice_id ? (
+                    <Link
+                      to={`/?voice=${encodeURIComponent(inspectedJob.voice_id)}`}
+                      className="font-mono font-medium text-sky-600 hover:underline"
+                      title="Open TTS Studio with this voice"
+                    >
+                      {inspectedJob.voice_id.slice(0, 8)}...
+                    </Link>
+                  ) : (
+                    <span className="font-mono font-medium">Default</span>
+                  )}
                 </div>
                 <div>
                   <span className="text-muted-foreground block">Characters</span>

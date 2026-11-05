@@ -1,14 +1,22 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { apiClient, ApiError } from "@/controllers/apiClient";
 import type { VoiceItem } from "@/models/types";
 
 export function useVoiceController() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [voices, setVoices] = useState<VoiceItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [filterLang, setFilterLang] = useState<string>("all");
+  const [filterLang, setFilterLangState] = useState<string>(() => searchParams.get("lang") || "all");
 
   // Active modal ("clone" | "design" | "edit" | null)
-  const [activeModal, setActiveModal] = useState<"clone" | "design" | "edit" | null>(null);
+  const [activeModal, setActiveModal] = useState<"clone" | "design" | "edit" | null>(() => {
+    const action = searchParams.get("action");
+    if (action === "clone" || action === "design") {
+      return action;
+    }
+    return null;
+  });
 
   // Edit Form State
   const [editingVoice, setEditingVoice] = useState<VoiceItem | null>(null);
@@ -59,6 +67,70 @@ export function useVoiceController() {
       }
     };
   }, []);
+
+  // Synchronize modal state and language filter with URL search parameters
+  const actionParam = searchParams.get("action");
+  const langParam = searchParams.get("lang");
+
+  useEffect(() => {
+    if (actionParam === "clone") {
+      setActiveModal("clone");
+    } else if (actionParam === "design") {
+      setActiveModal("design");
+    } else if (!editingVoice) {
+      setActiveModal(null);
+    }
+  }, [actionParam, editingVoice]);
+
+  useEffect(() => {
+    if (langParam) {
+      setFilterLangState(langParam);
+    } else {
+      setFilterLangState("all");
+    }
+  }, [langParam]);
+
+  const setFilterLang = (lang: string) => {
+    setFilterLangState(lang);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (lang === "all") {
+        next.delete("lang");
+      } else {
+        next.set("lang", lang);
+      }
+      return next;
+    });
+  };
+
+  const openCloneModal = () => {
+    setActiveModal("clone");
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set("action", "clone");
+      return next;
+    });
+  };
+
+  const openDesignModal = () => {
+    setActiveModal("design");
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set("action", "design");
+      return next;
+    });
+  };
+
+  const closeModal = () => {
+    setActiveModal(null);
+    setEditingVoice(null);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete("action");
+      next.delete("edit");
+      return next;
+    });
+  };
 
   const loadVoices = async () => {
     setIsLoading(true);
@@ -290,13 +362,10 @@ export function useVoiceController() {
     setFilterLang,
     activeModal,
     setActiveModal,
-    openCloneModal: () => setActiveModal("clone"),
-    openDesignModal: () => setActiveModal("design"),
+    openCloneModal,
+    openDesignModal,
     openEditModal,
-    closeModal: () => {
-      setActiveModal(null);
-      setEditingVoice(null);
-    },
+    closeModal,
     // Clone
     cloneName,
     setCloneName,

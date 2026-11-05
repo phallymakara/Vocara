@@ -1,5 +1,6 @@
 import React from "react";
-import { Plus, Sliders, Play, Pause, Upload, Loader2, ChevronDown, ChevronRight, Copy, Check, Edit2, Trash2 } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Plus, Sliders, Play, Pause, Upload, Loader2, ChevronDown, ChevronRight, Copy, Check, Edit2, Trash2, Mic } from "lucide-react";
 import { useVoiceController } from "@/controllers/useVoiceController";
 import { Button } from "@/views/components/ui/button";
 import { Input } from "@/views/components/ui/input";
@@ -256,6 +257,14 @@ export const VoiceLibraryPage: React.FC = () => {
                           </>
                         )}
                       </Button>
+                      <Link
+                        to={`/?voice=${encodeURIComponent(voice.id)}`}
+                        className="inline-flex items-center justify-center h-8 px-2.5 text-xs font-medium rounded border border-input bg-background hover:bg-slate-100 dark:hover:bg-slate-800 text-sky-600 hover:text-sky-700 transition-colors gap-1"
+                        title="Use this voice in TTS Studio"
+                      >
+                        <Mic className="h-3.5 w-3.5" />
+                        <span>Use</span>
+                      </Link>
                     </div>
                   </div>
                 </CardContent>

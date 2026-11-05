@@ -1,8 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import { apiClient, ApiError } from "@/controllers/apiClient";
 import type { WebhookSubscription, JobItem } from "@/models/types";
 
 export function useWebhookController() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlJobId = searchParams.get("job_id");
+
   // Webhooks State
   const [webhooks, setWebhooks] = useState<WebhookSubscription[]>([]);
   const [isLoadingWebhooks, setIsLoadingWebhooks] = useState<boolean>(true);
@@ -15,10 +19,35 @@ export function useWebhookController() {
   const [webhookError, setWebhookError] = useState<string | null>(null);
 
   // Job Inspection State
-  const [jobIdInput, setJobIdInput] = useState<string>("");
+  const [jobIdInput, setJobIdInput] = useState<string>(urlJobId || "");
   const [inspectedJob, setInspectedJob] = useState<JobItem | null>(null);
   const [isInspectingJob, setIsInspectingJob] = useState<boolean>(false);
   const [jobSearchError, setJobSearchError] = useState<string | null>(null);
+
+  const fetchJobById = useCallback(async (id: string) => {
+    if (!id.trim()) return;
+    setIsInspectingJob(true);
+    setJobSearchError(null);
+    try {
+      const job = await apiClient.getJob(id.trim());
+      setInspectedJob(job);
+    } catch (err: unknown) {
+      if (err instanceof ApiError) {
+        setJobSearchError(err.message);
+      } else {
+        setJobSearchError("Job not found or failed to fetch.");
+      }
+    } finally {
+      setIsInspectingJob(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (urlJobId) {
+      setJobIdInput(urlJobId);
+      fetchJobById(urlJobId);
+    }
+  }, [urlJobId, fetchJobById]);
 
   const loadWebhooks = useCallback(async () => {
     if (!apiClient.getApiKey()) {
@@ -104,28 +133,19 @@ export function useWebhookController() {
   };
 
   const inspectJob = async () => {
-    setJobSearchError(null);
-    setInspectedJob(null);
-
     const id = jobIdInput.trim();
     if (!id) {
       setJobSearchError("Please enter a Job ID.");
       return;
     }
 
-    setIsInspectingJob(true);
-    try {
-      const job = await apiClient.getJob(id);
-      setInspectedJob(job);
-    } catch (err: unknown) {
-      if (err instanceof ApiError) {
-        setJobSearchError(err.message);
-      } else {
-        setJobSearchError("Job not found or failed to fetch.");
-      }
-    } finally {
-      setIsInspectingJob(false);
-    }
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set("job_id", id);
+      return next;
+    });
+
+    await fetchJobById(id);
   };
 
   const downloadJobAudio = async (jobId: string) => {

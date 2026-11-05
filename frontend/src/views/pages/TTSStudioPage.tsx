@@ -135,9 +135,15 @@ export const TTSStudioPage: React.FC = () => {
                   value={activeJob.status === "completed" ? 100 : activeJob.status === "processing" ? 60 : 25}
                   className="h-2"
                 />
-                <p className="text-xs text-muted-foreground">
-                  Status: {activeJob.status}
-                </p>
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Status: {activeJob.status}</span>
+                  <Link
+                    to={`/jobs?job_id=${encodeURIComponent(activeJob.id)}`}
+                    className="text-sky-600 hover:text-sky-700 font-medium underline"
+                  >
+                    View in Jobs & Webhooks &rarr;
+                  </Link>
+                </div>
               </CardContent>
             </Card>
           )}
@@ -196,7 +202,7 @@ export const TTSStudioPage: React.FC = () => {
                 {voices.length === 0 && (
                   <p className="text-xs text-muted-foreground mt-1">
                     No voices created yet.{" "}
-                    <Link to="/voices" className="text-sky-600 underline">
+                    <Link to="/voices?action=clone" className="text-sky-600 underline">
                       Clone or design a voice
                     </Link>{" "}
                     to synthesize.

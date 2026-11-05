@@ -1,13 +1,17 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { apiClient, ApiError } from "@/controllers/apiClient";
 import type { VoiceItem, JobItem } from "@/models/types";
 
 export const DEFAULT_SYNTHESIS_TEXT = "សួស្តីខ្ញុំជាវូការាជាអេអាយបម្លែងអក្សរទៅជាសម្លេង";
 
 export function useTTSController() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const voiceParam = searchParams.get("voice");
+
   const [text, setText] = useState<string>(DEFAULT_SYNTHESIS_TEXT);
   const [voices, setVoices] = useState<VoiceItem[]>([]);
-  const [selectedVoiceId, setSelectedVoiceId] = useState<string>("");
+  const [selectedVoiceId, setSelectedVoiceIdState] = useState<string>(voiceParam || "");
   const [language, setLanguage] = useState<string>("km-KH");
   const [speed, setSpeed] = useState<number>(1.0);
   const [outputFormat, setOutputFormat] = useState<"mp3" | "wav" | "flac">("mp3");
@@ -24,6 +28,31 @@ export function useTTSController() {
   const charCount = text.length;
   const isAsyncMode = charCount >= 250;
 
+  const setSelectedVoiceId = (id: string) => {
+    setSelectedVoiceIdState(id);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (id) {
+        next.set("voice", id);
+      } else {
+        next.delete("voice");
+      }
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (voiceParam && voices.length > 0) {
+      const matched = voices.find((v) => v.id === voiceParam);
+      if (matched) {
+        setSelectedVoiceIdState(matched.id);
+        if (matched.language) {
+          setLanguage(matched.language);
+        }
+      }
+    }
+  }, [voiceParam, voices]);
+
   useEffect(() => {
     loadVoices();
   }, []);
@@ -32,8 +61,12 @@ export function useTTSController() {
     try {
       const data = await apiClient.listVoices();
       setVoices(data);
-      if (data.length > 0 && !selectedVoiceId) {
-        setSelectedVoiceId(data[0].id);
+      if (data.length > 0) {
+        if (voiceParam && data.some((v) => v.id === voiceParam)) {
+          setSelectedVoiceIdState(voiceParam);
+        } else if (!selectedVoiceId) {
+          setSelectedVoiceIdState(data[0].id);
+        }
       }
     } catch {
       // Ignored if unauthenticated
