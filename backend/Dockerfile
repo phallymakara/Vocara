@@ -17,14 +17,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install python dependencies
-COPY pyproject.toml .
+COPY pyproject.toml README.md ./
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir .
 
 # Copy application source code
 COPY src/ /app/src/
 COPY migrations/ /app/migrations/
-COPY alembic.ini /app/alembic.ini 2>/dev/null || true
+COPY alembic.ini /app/alembic.ini
 
 # Expose API port
 EXPOSE 8000
