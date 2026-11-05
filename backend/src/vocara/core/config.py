@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     # Security
     API_KEY_SALT: str = Field(default="dev-salt-change-in-production")
     SECRET_KEY: str = Field(default="dev-secret-change-in-production")
+    CORS_ORIGINS: list[str] = Field(
+        default_factory=lambda: ["http://localhost:3000", "http://127.0.0.1:3000"]
+    )
 
     # PostgreSQL Database
     DATABASE_URL: str = "postgresql+asyncpg://vocara_user:vocara_password@localhost:5432/vocara_db"
@@ -78,6 +81,38 @@ class Settings(BaseSettings):
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: Literal["json", "console"] = "console"
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, value: object) -> list[str]:
+        """Support comma-separated strings or string lists for CORS origins."""
+        if isinstance(value, str):
+            if not value.strip():
+                return []
+            return [origin.strip() for origin in value.split(",") if origin.strip()]
+        if isinstance(value, (list, tuple, set)):
+            return [str(origin).strip() for origin in value if str(origin).strip()]
+        return ["http://localhost:3000", "http://127.0.0.1:3000"]
+
+    @model_validator(mode="after")
+    def validate_production_security(self) -> "Settings":
+        """Halt startup if insecure settings are configured in production environment."""
+        if self.ENVIRONMENT == "production":
+            if self.DEBUG:
+                raise ValueError(
+                    "Insecure Configuration: DEBUG must be set to False in production environment."
+                )
+            if "dev-salt" in self.API_KEY_SALT or len(self.API_KEY_SALT) < 32:
+                raise ValueError(
+                    "Insecure Configuration: API_KEY_SALT must be a high-entropy secret "
+                    "(at least 32 characters) in production."
+                )
+            if "dev-secret" in self.SECRET_KEY or len(self.SECRET_KEY) < 32:
+                raise ValueError(
+                    "Insecure Configuration: SECRET_KEY must be a high-entropy secret "
+                    "(at least 32 characters) in production."
+                )
+        return self
 
 
 @lru_cache

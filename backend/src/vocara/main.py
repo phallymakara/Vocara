@@ -75,9 +75,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         InMemoryRateLimiterMiddleware,
         default_limit=cfg.DEFAULT_RATE_LIMIT_PER_MINUTE,
     )
+    # CORS configuration
+    cors_origins = (
+        ["*"]
+        if (cfg.DEBUG and "*" in cfg.CORS_ORIGINS)
+        else (cfg.CORS_ORIGINS or ["http://localhost:3000"])
+    )
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"] if cfg.DEBUG else [],
+        allow_origins=cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
