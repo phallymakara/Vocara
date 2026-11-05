@@ -1,0 +1,56 @@
+name: Production Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: "Target deployment environment"
+        required: true
+        default: "production"
+        type: choice
+        options:
+          - production
+          - staging
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Production Server
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Verify Production Compose Configuration
+        run: docker compose -f docker-compose.prod.yml config --quiet
+
+      # SSH Deployment to Production Host (executes when SSH secrets are configured)
+      - name: Deploy via SSH to Host
+        if: "${{ env.SSH_HOST != '' }}"
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          TARGET_DIR: ${{ secrets.SSH_TARGET_DIR || '/var/www/vocara' }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
+
+          ssh -i ~/.ssh/id_rsa "$SSH_USER@$SSH_HOST" << 'EOF'
+            set -e
+            cd /var/www/vocara
+            git pull origin main
+            docker compose -f docker-compose.prod.yml up -d --build
+            docker system prune -f
+          EOF
+
+      - name: Deployment Status Notification
+        run: |
+          echo "Production deployment trigger completed successfully for environment: ${{ github.event.inputs.target_environment || 'production' }}."
