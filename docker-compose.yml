@@ -76,7 +76,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - redisdata:/data
+      - vocara_redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -86,5 +86,6 @@ services:
 volumes:
   vocara_postgres_data:
     name: vocara_postgres_data
-  redisdata:
+  vocara_redis_data:
+    name: vocara_redis_data
   local_storage:

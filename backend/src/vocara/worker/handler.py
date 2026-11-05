@@ -26,6 +26,10 @@ class Worker:
         self.poll_timeout = poll_timeout or container.settings.WORKER_POLL_TIMEOUT_SECONDS
         self._is_running = False
 
+    def stop(self) -> None:
+        """Signal the worker loop to gracefully stop after current task finishes."""
+        self._is_running = False
+
     async def run_forever(self) -> None:
         """Main loop polling and executing background tasks until stopped."""
         self._is_running = True
