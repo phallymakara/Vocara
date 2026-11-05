@@ -36,6 +36,7 @@ class ModalInferenceEngine(BaseInferenceEngine):
         self._client = http_client
         self.storage = storage
         self.fallback_engine = fallback_engine
+        self._cached_voices: set[str] = set()
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
@@ -71,20 +72,25 @@ class ModalInferenceEngine(BaseInferenceEngine):
         if not self.endpoint_url:
             raise InferenceServiceError("Modal inference endpoint URL is not configured.")
 
-        # Download reference audio if voice is cloned
+        # Check if voice reference is already warm on the GPU container
+        is_warm = voice.id in self._cached_voices
+
+        # Only download and encode reference audio if not already warm on GPU
         ref_audio_b64: str | None = None
-        if reference_audio_bytes:
-            ref_audio_b64 = base64.b64encode(reference_audio_bytes).decode("utf-8")
-        elif self.storage and voice.reference_audio_key:
-            try:
-                raw_ref = await self.storage.download(voice.reference_audio_key)
-                ref_audio_b64 = base64.b64encode(raw_ref).decode("utf-8")
-            except Exception as err:
-                logger.warning("modal_reference_download_failed", key=voice.reference_audio_key, error=str(err))
+        if not is_warm:
+            if reference_audio_bytes:
+                ref_audio_b64 = base64.b64encode(reference_audio_bytes).decode("utf-8")
+            elif self.storage and voice.reference_audio_key:
+                try:
+                    raw_ref = await self.storage.download(voice.reference_audio_key)
+                    ref_audio_b64 = base64.b64encode(raw_ref).decode("utf-8")
+                except Exception as err:
+                    logger.warning("modal_reference_download_failed", key=voice.reference_audio_key, error=str(err))
 
         prompt_text = voice.modifiers.get("prompt_text") if voice.modifiers else None
 
         async def _call() -> tuple[bytes, float]:
+            nonlocal ref_audio_b64
             client = await self._get_client()
             url = f"{self.endpoint_url.rstrip('/')}/synthesize"
             payload = {
@@ -99,14 +105,30 @@ class ModalInferenceEngine(BaseInferenceEngine):
                 "reference_audio_base64": ref_audio_b64,
                 "prompt_audio_base64": ref_audio_b64,
                 "prompt_text": prompt_text,
-                "inference_timesteps": 20,
+                "inference_timesteps": 12,
                 "cfg_value": 1.8,
             }
 
             resp = await client.post(url, json=payload, headers=self._get_headers())
+
+            # If container was restarted and cache was flushed, invalidate cache, re-download and retry
+            if resp.status_code == 404 and "voice_cache_miss" in resp.text:
+                self._cached_voices.discard(voice.id)
+                if reference_audio_bytes:
+                    ref_audio_b64 = base64.b64encode(reference_audio_bytes).decode("utf-8")
+                elif self.storage and voice.reference_audio_key:
+                    raw_ref = await self.storage.download(voice.reference_audio_key)
+                    ref_audio_b64 = base64.b64encode(raw_ref).decode("utf-8")
+                payload["reference_audio_base64"] = ref_audio_b64
+                payload["prompt_audio_base64"] = ref_audio_b64
+                resp = await client.post(url, json=payload, headers=self._get_headers())
+
             if resp.status_code != 200:
                 logger.error("remote_inference_failed", status=resp.status_code, body=resp.text)
                 raise InferenceServiceError(f"Remote inference returned status {resp.status_code}.")
+
+            if voice.id:
+                self._cached_voices.add(voice.id)
 
             content_type = resp.headers.get("content-type", "")
             if "application/json" in content_type:
