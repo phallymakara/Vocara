@@ -1,16 +1,26 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Key, CheckCircle2, AlertCircle } from "lucide-react";
 import { apiClient } from "@/controllers/apiClient";
 import { Badge } from "@/views/components/ui/badge";
 import { Button } from "@/views/components/ui/button";
 
 interface HeaderProps {
-  onNavigateKeys: () => void;
+  onNavigateKeys?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({ onNavigateKeys }) => {
+  const navigate = useNavigate();
   const [apiKey, setApiKey] = useState<string | null>(apiClient.getApiKey());
   const [isHealthy, setIsHealthy] = useState<boolean | null>(null);
+
+  const handleNavigateToKeys = () => {
+    if (onNavigateKeys) {
+      onNavigateKeys();
+    } else {
+      navigate("/keys");
+    }
+  };
 
   useEffect(() => {
     apiClient
@@ -57,7 +67,7 @@ export const Header: React.FC<HeaderProps> = ({ onNavigateKeys }) => {
             <Button
               variant="ghost"
               size="sm"
-              onClick={onNavigateKeys}
+              onClick={handleNavigateToKeys}
               className="h-6 px-2 text-xs text-sky-600 hover:text-sky-700"
             >
               Change
@@ -67,7 +77,7 @@ export const Header: React.FC<HeaderProps> = ({ onNavigateKeys }) => {
           <Button
             variant="outline"
             size="sm"
-            onClick={onNavigateKeys}
+            onClick={handleNavigateToKeys}
             className="text-xs border-destructive text-destructive hover:bg-destructive/10"
           >
             <Key className="h-3.5 w-3.5 mr-1.5" />

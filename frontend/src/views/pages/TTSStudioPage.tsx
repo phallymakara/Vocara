@@ -1,5 +1,6 @@
 import React from "react";
-import { Mic, Zap, Clock, Loader2, Sparkles } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Mic, Zap, Clock, Loader2, Sparkles, Plus } from "lucide-react";
 import { useTTSController } from "@/controllers/useTTSController";
 import { Button } from "@/views/components/ui/button";
 import { Textarea } from "@/views/components/ui/textarea";
@@ -167,7 +168,16 @@ export const TTSStudioPage: React.FC = () => {
             <CardContent className="space-y-5">
               {/* Voice Selector */}
               <div className="space-y-1.5">
-                <Label htmlFor="voice-select">Speaker Voice</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="voice-select">Speaker Voice</Label>
+                  <Link
+                    to="/voices"
+                    className="text-xs text-sky-600 hover:text-sky-700 flex items-center gap-1 font-medium"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Manage Voices
+                  </Link>
+                </div>
                 <select
                   id="voice-select"
                   value={selectedVoiceId}
@@ -183,6 +193,15 @@ export const TTSStudioPage: React.FC = () => {
                     </option>
                   ))}
                 </select>
+                {voices.length === 0 && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    No voices created yet.{" "}
+                    <Link to="/voices" className="text-sky-600 underline">
+                      Clone or design a voice
+                    </Link>{" "}
+                    to synthesize.
+                  </p>
+                )}
                 {voiceError && (
                   <p className="text-xs text-destructive mt-1">{voiceError}</p>
                 )}

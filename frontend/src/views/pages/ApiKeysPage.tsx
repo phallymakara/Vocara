@@ -47,7 +47,9 @@ export const ApiKeysPage: React.FC = () => {
   const [copiedSnippet, setCopiedSnippet] = useState(false);
 
   const baseUrl = typeof window !== "undefined"
-    ? `${window.location.protocol}//${window.location.hostname}:8002`
+    ? (window.location.port === "3000"
+        ? `${window.location.protocol}//${window.location.hostname}:8002`
+        : window.location.origin)
     : "http://localhost:8002";
 
   const effectiveKey = activeKeyInput?.trim() || "voc_YOUR_API_KEY";
