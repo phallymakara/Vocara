@@ -181,11 +181,20 @@ def setup_logging(log_level: str = "INFO", log_format: str = "console") -> None:
         uv_logger.handlers.clear()
         uv_logger.propagate = True
 
-    # Suppress redundant internal client/access logs to keep terminal concise
+    # Suppress verbose third-party HTTP wire logs to keep terminal structured and clean
     logging.getLogger("uvicorn.access").handlers.clear()
     logging.getLogger("uvicorn.access").propagate = False
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    for noisy_logger in (
+        "azure",
+        "azure.core",
+        "azure.core.pipeline.policies",
+        "azure.core.pipeline.policies.http_logging_policy",
+        "azure.storage",
+        "azure.storage.blob",
+        "httpx",
+        "httpcore",
+    ):
+        logging.getLogger(noisy_logger).setLevel(logging.WARNING)
 
 
 def get_logger(name: str = "vocara") -> structlog.stdlib.BoundLogger:

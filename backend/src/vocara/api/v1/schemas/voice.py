@@ -28,7 +28,7 @@ class UpdateVoiceRequest(BaseModel):
     """Payload for updating custom voice metadata."""
 
     name: str | None = Field(default=None, min_length=2, max_length=100)
-    description: str | None = Field(default=None, max_length=255)
+    description: str | None = Field(default=None, max_length=2000)
     visibility: VoiceVisibility | None = None
     modifiers: dict[str, Any] | None = None
 
@@ -40,6 +40,9 @@ class DesignVoiceRequest(BaseModel):
     base_voice_id: str | None = Field(
         default=None, description="ID of the parent voice to derive from"
     )
+    gender: str | None = Field(
+        default="female", description="Speaker gender profile: female, male, neutral"
+    )
     pitch: float | None = Field(
         default=None, ge=0.5, le=2.0, description="Pitch modifier factor (0.5 - 2.0)"
     )
@@ -48,6 +51,6 @@ class DesignVoiceRequest(BaseModel):
     )
     emotion: str | None = Field(default=None, max_length=50, description="Target emotion tag")
     style: str | None = Field(default=None, max_length=50, description="Target speech style")
-    description: str = Field(default="", max_length=255)
+    description: str = Field(default="", max_length=2000)
     visibility: VoiceVisibility = Field(default=VoiceVisibility.PRIVATE)
     extra_modifiers: dict[str, Any] = Field(default_factory=dict)

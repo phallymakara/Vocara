@@ -44,6 +44,8 @@ export const VoiceLibraryPage: React.FC = () => {
     setDesignName,
     designDescription,
     setDesignDescription,
+    designGender,
+    setDesignGender,
     designPitch,
     setDesignPitch,
     designSpeed,
@@ -177,16 +179,63 @@ export const VoiceLibraryPage: React.FC = () => {
                           ? "secondary"
                           : "outline"
                       }
-                      className="text-[11px] capitalize"
+                      className={`text-[11px] font-medium ${
+                        voice.voice_type === "cloned"
+                          ? "bg-[#1264F5] text-white hover:bg-[#0E52CC]"
+                          : voice.voice_type === "designed"
+                          ? "bg-purple-600 text-white hover:bg-purple-700"
+                          : ""
+                      }`}
                     >
-                      {voice.voice_type.replace("_", " ")}
+                      {voice.voice_type === "cloned"
+                        ? "Cloned Voice"
+                        : voice.voice_type === "designed"
+                        ? "Designed Voice"
+                        : "Built-in"}
                     </Badge>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3 pt-2">
                   <p className="text-xs text-muted-foreground line-clamp-2 min-h-[32px]">
-                    {voice.description || "High-clarity neural acoustic profile for production synthesis."}
+                    {voice.description || (
+                      voice.voice_type === "cloned"
+                        ? `Custom timbre clone synthesized from ${String(voice.modifiers?.duration_seconds ?? "")}s reference sample.`
+                        : voice.voice_type === "designed"
+                        ? `Acoustic variation (Pitch: ${String(voice.modifiers?.pitch ?? 1.0)}x, Speed: ${String(voice.modifiers?.speed ?? 1.0)}x${voice.modifiers?.emotion ? `, ${String(voice.modifiers.emotion)}` : ""}).`
+                        : "High-clarity neural acoustic profile for production synthesis."
+                    )}
                   </p>
+
+                  {voice.voice_type === "designed" && (
+                    <div className="flex flex-wrap gap-1.5 text-[11px] text-muted-foreground font-mono">
+                      {Boolean(voice.modifiers?.gender) && (
+                        <span className="px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 capitalize">
+                          {String(voice.modifiers?.gender)}
+                        </span>
+                      )}
+                      <span className="px-1.5 py-0.5 rounded bg-muted">Pitch: {String(voice.modifiers?.pitch ?? 1.0)}x</span>
+                      <span className="px-1.5 py-0.5 rounded bg-muted">Speed: {String(voice.modifiers?.speed ?? 1.0)}x</span>
+                      {Boolean(voice.modifiers?.emotion) && (
+                        <span className="px-1.5 py-0.5 rounded bg-muted capitalize">{String(voice.modifiers?.emotion)}</span>
+                      )}
+                    </div>
+                  )}
+
+                  {voice.voice_type === "cloned" && (
+                    <div className="flex flex-wrap gap-1.5 text-[11px] text-muted-foreground font-mono">
+                      <span className="px-1.5 py-0.5 rounded bg-blue-50 text-[#1264F5] border border-blue-200">
+                        Timbre Reference
+                      </span>
+                      {Boolean(voice.modifiers?.gender) && (
+                        <span className="px-1.5 py-0.5 rounded bg-muted capitalize">
+                          {String(voice.modifiers?.gender)}
+                        </span>
+                      )}
+                      {Boolean(voice.modifiers?.duration_seconds) && (
+                        <span className="px-1.5 py-0.5 rounded bg-muted">{String(voice.modifiers?.duration_seconds)}s sample</span>
+                      )}
+                    </div>
+                  )}
                   <p
                     className="text-[11px] text-muted-foreground/80 font-mono truncate"
                     title={
@@ -338,14 +387,14 @@ export const VoiceLibraryPage: React.FC = () => {
                 <span className="font-medium text-foreground">Recommended Script to Read:</span>
                 <button
                   type="button"
-                  onClick={() => setClonePromptText("សួស្តីខ្ញុំជាវូការាជាអេអាយបម្លែងអក្សរទៅជាសម្លេង")}
+                  onClick={() => setClonePromptText("សួស្តី ខ្ញុំជាវូការា ជាអេអាយបម្លែងអក្សរទៅជាសម្លេង។")}
                   className="text-[11px] text-primary hover:underline font-normal cursor-pointer"
                 >
                   Use this script
                 </button>
               </div>
               <p className="text-muted-foreground select-all font-sans font-medium">
-                &ldquo;សួស្តីខ្ញុំជាវូការាជាអេអាយបម្លែងអក្សរទៅជាសម្លេង&rdquo;
+                &ldquo;សួស្តី ខ្ញុំជាវូការា ជាអេអាយបម្លែងអក្សរទៅជាសម្លេង។&rdquo;
               </p>
               <p className="text-[11px] text-muted-foreground">
                 Speaking this phrase provides the optimal acoustic foundation for your cloned preview.
@@ -436,14 +485,51 @@ export const VoiceLibraryPage: React.FC = () => {
               )}
             </div>
 
+            <div className="space-y-1.5">
+              <Label>Speaker Gender</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: "female", label: "Female" },
+                  { id: "male", label: "Male" },
+                  { id: "neutral", label: "Neutral" },
+                ].map((g) => (
+                  <button
+                    key={g.id}
+                    type="button"
+                    onClick={() => setDesignGender(g.id)}
+                    className={`flex items-center justify-center py-2 px-3 text-xs font-medium rounded-md border transition-all ${
+                      designGender === g.id
+                        ? "border-[#1264F5] bg-[#1264F5]/10 text-[#1264F5] font-semibold"
+                        : "border-input bg-background hover:bg-muted/50 text-muted-foreground"
+                    }`}
+                  >
+                    {g.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="space-y-1">
-              <Label htmlFor="design-desc">Description</Label>
-              <Input
+              <div className="flex justify-between items-center">
+                <Label htmlFor="design-desc">Description</Label>
+                <span className="text-[11px] text-muted-foreground font-mono">
+                  {designDescription.length}/2,000
+                </span>
+              </div>
+              <textarea
                 id="design-desc"
                 value={designDescription}
                 onChange={(e) => setDesignDescription(e.target.value)}
                 placeholder="Enter voice description..."
+                rows={3}
+                maxLength={2000}
+                className={`w-full px-3 py-2 text-xs bg-background border rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-y min-h-[72px] transition-colors ${
+                  designErrors.description ? "border-destructive ring-destructive" : "border-input"
+                }`}
               />
+              {designErrors.description && (
+                <p className="text-xs text-destructive mt-1">{designErrors.description}</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -463,6 +549,9 @@ export const VoiceLibraryPage: React.FC = () => {
                 <span>1.0x Default</span>
                 <span>1.5x Higher</span>
               </div>
+              {designErrors.pitch && (
+                <p className="text-xs text-destructive mt-1">{designErrors.pitch}</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -477,12 +566,15 @@ export const VoiceLibraryPage: React.FC = () => {
                 step={0.05}
                 onValueChange={(val) => setDesignSpeed(val[0])}
               />
+              {designErrors.speed && (
+                <p className="text-xs text-destructive mt-1">{designErrors.speed}</p>
+              )}
             </div>
 
             <div className="rounded border border-border bg-muted/20 p-2.5 text-xs space-y-1">
               <span className="font-medium text-foreground">Preview Phrase:</span>
               <p className="text-muted-foreground select-all font-sans font-medium">
-                &ldquo;សួស្តីខ្ញុំជាវូការាជាអេអាយបម្លែងអក្សរទៅជាសម្លេង&rdquo;
+                &ldquo;សួស្តី ខ្ញុំជាវូការា ជាអេអាយបម្លែងអក្សរទៅជាសម្លេង។&rdquo;
               </p>
               <p className="text-[11px] text-muted-foreground">
                 The designed acoustic variation will be automatically previewed using this phrase.
@@ -602,13 +694,26 @@ export const VoiceLibraryPage: React.FC = () => {
             </div>
 
             <div className="space-y-1">
-              <Label htmlFor="edit-description">Description</Label>
-              <Input
+              <div className="flex justify-between items-center">
+                <Label htmlFor="edit-description">Description</Label>
+                <span className="text-[11px] text-muted-foreground font-mono">
+                  {editDescription.length}/2,000
+                </span>
+              </div>
+              <textarea
                 id="edit-description"
                 value={editDescription}
                 onChange={(e) => setEditDescription(e.target.value)}
                 placeholder="Optional description"
+                rows={3}
+                maxLength={2000}
+                className={`w-full px-3 py-2 text-xs bg-background border rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-y min-h-[72px] transition-colors ${
+                  editErrors.description ? "border-destructive ring-destructive" : "border-input"
+                }`}
               />
+              {editErrors.description && (
+                <p className="text-xs text-destructive mt-1">{editErrors.description}</p>
+              )}
             </div>
 
             <div className="space-y-1">

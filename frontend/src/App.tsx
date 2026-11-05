@@ -10,14 +10,14 @@ import { WebhooksJobsPage } from "@/views/pages/WebhooksJobsPage";
 
 export const App: React.FC = () => {
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-background">
+    <div className="flex h-screen w-screen overflow-hidden bg-[#F7F9FE]">
       {/* Responsive Sidebar */}
       <Sidebar />
 
       {/* Main Content Area */}
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden bg-[#F7F9FE]">
         <Header />
-        <main className="flex-1 overflow-y-auto p-6 md:p-8">
+        <main className="flex-1 overflow-y-auto p-6 md:p-8 lg:p-10 relative">
           <Routes>
             <Route path="/" element={<TTSStudioPage />} />
             <Route path="/tts" element={<Navigate to="/" replace />} />

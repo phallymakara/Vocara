@@ -156,7 +156,7 @@ async def clone_voice(
         ..., description="Explicit consent confirmation from the voice owner"
     ),
     language: str = Form(default="km-KH", description="Primary spoken language (e.g. km-KH)"),
-    description: str = Form(default="", max_length=255, description="Optional description"),
+    description: str = Form(default="", max_length=2000, description="Optional description"),
     visibility: VoiceVisibility = Form(
         default=VoiceVisibility.PRIVATE, description="Voice visibility"
     ),
@@ -203,6 +203,7 @@ async def design_voice(
         owner_id=current_key.owner_id,
         name=payload.name,
         base_voice_id=payload.base_voice_id,
+        gender=payload.gender,
         pitch=payload.pitch,
         speed=payload.speed,
         emotion=payload.emotion,

@@ -170,6 +170,7 @@ class VocaraApiClient {
     name: string;
     description?: string;
     base_voice_id?: string;
+    gender?: string;
     pitch?: number;
     speed?: number;
     emotion?: string;

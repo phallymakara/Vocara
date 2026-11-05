@@ -1,5 +1,6 @@
 """Voice Library business logic service."""
 
+import re
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -17,6 +18,7 @@ from vocara.domain.entities import Voice
 from vocara.domain.enums import AudioFormat, VoiceType, VoiceVisibility
 from vocara.domain.ports import BlobStorage, InferenceEngine, VoiceRepository
 from vocara.utils.audio import (
+    apply_acoustic_modifiers,
     extract_acoustic_profile,
     generate_synthetic_tone_wav,
     normalize_audio_to_wav,
@@ -125,9 +127,17 @@ class VoiceService:
         if self.storage and voice.preview_audio_key:
             try:
                 audio_bytes = await self.storage.download(voice.preview_audio_key)
-                content_type = (
-                    "audio/mpeg" if voice.preview_audio_key.endswith(".mp3") else "audio/wav"
-                )
+                # Sniff audio container format to ensure matching browser MIME type
+                if audio_bytes.startswith(b"RIFF"):
+                    content_type = "audio/wav"
+                elif audio_bytes.startswith(b"ID3") or (
+                    len(audio_bytes) > 2 and audio_bytes[0] == 0xFF and (audio_bytes[1] & 0xE0) == 0xE0
+                ):
+                    content_type = "audio/mpeg"
+                else:
+                    content_type = (
+                        "audio/mpeg" if voice.preview_audio_key.endswith(".mp3") else "audio/wav"
+                    )
                 return audio_bytes, content_type
             except Exception:
                 pass  # Fall through to synthetic generation
@@ -204,6 +214,7 @@ class VoiceService:
                         language=language,
                         prompt_text=final_prompt_text,
                         voice_id=voice_id,
+                        generate_preview=True,
                     )
                 except TypeError:
                     clone_res = await self.inference_engine.clone_voice(
@@ -217,7 +228,7 @@ class VoiceService:
                 else:
                     feature_token, engine_preview = clone_res[0], clone_res[1]
 
-                if engine_preview and engine_preview != normalized_wav:
+                if engine_preview and len(engine_preview) > 0 and engine_preview != normalized_wav:
                     preview_sample = engine_preview
             except Exception:
                 pass
@@ -254,6 +265,33 @@ class VoiceService:
             updated_at=now,
         )
 
+        # Guarantee that preview audio is NEVER the raw uploaded recording; synthesize canonical preview if needed
+        if (preview_sample == normalized_wav or not preview_sample) and self.inference_engine:
+            try:
+                preview_text = get_preview_text_for_language(language)
+                generated_preview, _ = await self.inference_engine.generate_speech(
+                    text=preview_text,
+                    voice=voice,
+                    language=language,
+                    reference_audio_bytes=normalized_wav,
+                    output_format=AudioFormat.WAV,
+                )
+                if generated_preview and len(generated_preview) > 0:
+                    preview_sample = generated_preview
+            except Exception:
+                pass
+
+        # Ensure preview sample is genuine PCM WAV matching preview.wav extension
+        if preview_sample and not preview_sample.startswith(b"RIFF"):
+            try:
+                import io, soundfile as sf
+                data, sr = sf.read(io.BytesIO(preview_sample))
+                out_buf = io.BytesIO()
+                sf.write(out_buf, data, sr, format="WAV", subtype="PCM_16")
+                preview_sample = out_buf.getvalue()
+            except Exception:
+                pass
+
         # Upload reference and preview audio to blob storage concurrently
         if self.storage:
             import asyncio
@@ -269,6 +307,7 @@ class VoiceService:
         owner_id: str,
         name: str,
         base_voice_id: str | None = None,
+        gender: str | None = None,
         pitch: float | None = None,
         speed: float | None = None,
         emotion: str | None = None,
@@ -278,28 +317,60 @@ class VoiceService:
         extra_modifiers: dict[str, Any] | None = None,
     ) -> Voice:
         """Create a derivative voice profile variation from an existing base voice."""
+        clean_desc = description.strip()
+        desc_lower = clean_desc.lower()
+
+        # Detect target gender from explicit selection or word-boundary description cues
+        if gender:
+            target_gender = gender.lower()
+        elif re.search(r"\b(male|man|men|boy|actor|gentleman)\b", desc_lower):
+            target_gender = "male"
+        elif re.search(r"\b(female|woman|women|girl|actress|lady)\b", desc_lower):
+            target_gender = "female"
+        else:
+            target_gender = "female"
+
         if not base_voice_id:
-            accessible = await self.voice_repo.list_accessible_voices(owner_id=owner_id)
-            if not accessible:
-                raise VoiceNotFoundError("default")
-            base_voice = accessible[0]
+            preferred_id = "voice-sophea-built-in" if target_gender == "female" else "voice-dara-built-in"
+            try:
+                base_voice = await self.get_voice_by_id(preferred_id, owner_id)
+            except Exception:
+                accessible = await self.voice_repo.list_accessible_voices(owner_id=owner_id)
+                matching = [
+                    v
+                    for v in accessible
+                    if str(v.modifiers.get("gender", "")).lower() == target_gender
+                ]
+                base_voice = matching[0] if matching else accessible[0]
         else:
             base_voice = await self.get_voice_by_id(base_voice_id, owner_id)
+            # If the user selected a base voice of a different gender, prefer a matching base voice
+            if str(base_voice.modifiers.get("gender", "")).lower() != target_gender and base_voice.voice_type != VoiceType.CLONED:
+                accessible = await self.voice_repo.list_accessible_voices(owner_id=owner_id)
+                matching = [
+                    v for v in accessible
+                    if str(v.modifiers.get("gender", "")).lower() == target_gender
+                ]
+                if matching:
+                    base_voice = matching[0]
 
         raw_modifiers: dict[str, Any] = {
             **base_voice.modifiers,
             "parent_voice_id": base_voice.id,
+            "gender": target_gender,
             "pitch": pitch,
             "speed": speed,
             "emotion": emotion,
             "style": style,
+            "description": clean_desc,
             **(extra_modifiers or {}),
         }
         modifiers = {k: v for k, v in raw_modifiers.items() if v is not None}
 
         voice_id = str(uuid.uuid4())
         preview_key = f"voices/{voice_id}/preview.wav"
-        ref_key = base_voice.reference_audio_key
+        # The designed voice preview becomes the vocal reference so subsequent VoxCPM TTS synthesis calls clone this exact timbre
+        ref_key = preview_key
         engine_preview: bytes | None = None
 
         if self.inference_engine:
@@ -310,8 +381,10 @@ class VoiceService:
                 if token:
                     modifiers["feature_token"] = token
             except Exception:
+                ref_key = base_voice.reference_audio_key
                 preview_key = base_voice.preview_audio_key
         else:
+            ref_key = base_voice.reference_audio_key
             preview_key = base_voice.preview_audio_key
 
         now = datetime.now(UTC)
@@ -321,7 +394,7 @@ class VoiceService:
             voice_type=VoiceType.DESIGNED,
             owner_id=owner_id,
             language=base_voice.language,
-            description=description.strip() or f"Variation of {base_voice.name}",
+            description=clean_desc or f"Variation of {base_voice.name}",
             reference_audio_key=ref_key,
             preview_audio_key=preview_key,
             modifiers=modifiers,
@@ -331,9 +404,9 @@ class VoiceService:
             updated_at=now,
         )
 
-        # Synthesize canonical default preview script using the acoustic modifiers of the designed voice
+        # Synthesize canonical default preview script using the acoustic modifiers of the designed voice if not already done
         preview_sample: bytes | None = engine_preview
-        if self.inference_engine:
+        if (not preview_sample or len(preview_sample) == 0) and self.inference_engine:
             try:
                 preview_text = get_preview_text_for_language(voice.language)
                 generated_preview, _ = await self.inference_engine.generate_speech(

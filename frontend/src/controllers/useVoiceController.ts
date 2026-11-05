@@ -46,6 +46,7 @@ export function useVoiceController() {
   // Design Form State
   const [designName, setDesignName] = useState<string>("");
   const [designDescription, setDesignDescription] = useState<string>("");
+  const [designGender, setDesignGender] = useState<string>("female");
   const [designPitch, setDesignPitch] = useState<number>(1.0);
   const [designSpeed, setDesignSpeed] = useState<number>(1.0);
   const [designBaseId, setDesignBaseId] = useState<string>("");
@@ -228,8 +229,25 @@ export function useVoiceController() {
 
   const submitDesign = async () => {
     const errors: Record<string, string> = {};
-    if (!designName.trim()) {
+    const trimmedName = designName.trim();
+    if (!trimmedName) {
       errors.name = "Please enter a voice name.";
+    } else if (trimmedName.length < 2) {
+      errors.name = "Voice name must be at least 2 characters.";
+    } else if (trimmedName.length > 100) {
+      errors.name = "Voice name cannot exceed 100 characters.";
+    }
+
+    if (designDescription.trim().length > 2000) {
+      errors.description = "Description cannot exceed 2,000 characters.";
+    }
+
+    if (designPitch < 0.5 || designPitch > 2.0) {
+      errors.pitch = "Pitch modifier must be between 0.5x and 2.0x.";
+    }
+
+    if (designSpeed < 0.5 || designSpeed > 2.0) {
+      errors.speed = "Pace modifier must be between 0.5x and 2.0x.";
     }
 
     if (Object.keys(errors).length > 0) {
@@ -242,8 +260,9 @@ export function useVoiceController() {
 
     try {
       await apiClient.designVoice({
-        name: designName.trim(),
+        name: trimmedName,
         description: designDescription.trim(),
+        gender: designGender,
         pitch: designPitch,
         speed: designSpeed,
         base_voice_id: designBaseId.trim() || undefined,
@@ -251,9 +270,10 @@ export function useVoiceController() {
         style: designStyle.trim() || undefined,
       });
 
-      setActiveModal(null);
+      closeModal();
       setDesignName("");
       setDesignDescription("");
+      setDesignGender("female");
       setDesignBaseId("");
       setDesignEmotion("");
       setDesignStyle("");
@@ -290,6 +310,9 @@ export function useVoiceController() {
     const errors: Record<string, string> = {};
     if (!editName.trim()) {
       errors.name = "Please enter a voice name.";
+    }
+    if (editDescription.trim().length > 2000) {
+      errors.description = "Description cannot exceed 2,000 characters.";
     }
 
     if (Object.keys(errors).length > 0) {
@@ -389,6 +412,8 @@ export function useVoiceController() {
     setDesignName,
     designDescription,
     setDesignDescription,
+    designGender,
+    setDesignGender,
     designPitch,
     setDesignPitch,
     designSpeed,

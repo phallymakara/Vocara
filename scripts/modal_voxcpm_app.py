@@ -106,17 +106,19 @@ class VoxCPMService:
         if req.get("generate_preview", False):
             preview_text = (req.get("preview_text") or "Hello! This is a preview of your cloned voice.").strip()
             preview_max_len = max(100, min(500, int(len(preview_text) * 3) + 80))
+            timesteps = int(req.get("inference_timesteps") or 20)
+            cfg_val = float(req.get("cfg_value") or 2.0)
             with torch.inference_mode():
                 wav_data = self.model.generate(
                     text=preview_text,
                     reference_wav_path=cached_file,
-                    inference_timesteps=12,
-                    cfg_value=1.8,
-                    denoise=False,
+                    inference_timesteps=timesteps,
+                    cfg_value=cfg_val,
+                    denoise=True,
                     max_len=preview_max_len,
                 )
             buf = io.BytesIO()
-            sf.write(buf, wav_data, self.sample_rate, format="MP3")
+            sf.write(buf, wav_data, self.sample_rate, format="WAV")
             preview_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
 
         return {
@@ -251,9 +253,9 @@ class VoxCPMService:
         voice_id = req.get("voice_id")
         ref_b64 = req.get("reference_audio_base64") or req.get("prompt_audio_base64")
 
-        # Phase 4: Calibrated diffusion steps (12 steps delivers studio fidelity at 2.5x speed)
-        timesteps = int(req.get("inference_timesteps") or 12)
-        cfg_val = float(req.get("cfg_value") or 1.8)
+        # Phase 4: Calibrated diffusion steps (20 steps delivers high natural human fidelity)
+        timesteps = int(req.get("inference_timesteps") or 20)
+        cfg_val = float(req.get("cfg_value") or 2.0)
 
         # Phase 2: In-Memory Voice Reference Cache Lookup
         ref_path = None
@@ -299,7 +301,7 @@ class VoxCPMService:
                         reference_wav_path=ref_path,
                         inference_timesteps=timesteps,
                         cfg_value=cfg_val,
-                        denoise=False,
+                        denoise=True,
                         max_len=synth_max_len,
                     )
                 else:

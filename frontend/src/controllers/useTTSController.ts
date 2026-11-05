@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { apiClient, ApiError } from "@/controllers/apiClient";
 import type { VoiceItem, JobItem } from "@/models/types";
 
-export const DEFAULT_SYNTHESIS_TEXT = "សួស្តីខ្ញុំជាវូការាជាអេអាយបម្លែងអក្សរទៅជាសម្លេង";
+export const DEFAULT_SYNTHESIS_TEXT = "សូមស្វាគមន៍មកកាន់ប្រព័ន្ធបម្លែងអក្សរទៅជាសម្លេង";
 
 export function useTTSController() {
   const [searchParams, setSearchParams] = useSearchParams();

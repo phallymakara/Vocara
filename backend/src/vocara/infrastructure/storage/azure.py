@@ -25,7 +25,10 @@ class AzureBlobStorageAdapter(BlobStorage):
 
         self.connection_string = connection_string
         self.container_name = container_name
-        self.service_client = BlobServiceClient.from_connection_string(connection_string)
+        self.service_client = BlobServiceClient.from_connection_string(
+            connection_string,
+            logging_enable=False,
+        )
         self.container_client = self.service_client.get_container_client(container_name)
 
         self.account_name = self.service_client.account_name

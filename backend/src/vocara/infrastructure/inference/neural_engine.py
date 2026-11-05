@@ -44,25 +44,77 @@ class NeuralTtsEngine(BaseInferenceEngine):
         voice_name_lower = voice.name.lower()
         voice_id_lower = voice.id.lower()
         modifier_gender = str(voice.modifiers.get("gender", "")).lower()
+        desc_lower = (voice.description or "").lower()
+
+        # 1. Explicit modifier gender takes highest priority
+        if modifier_gender == "female":
+            is_female = True
+            is_male = False
+        elif modifier_gender == "male":
+            is_female = False
+            is_male = True
+        else:
+            # Word-boundary regex checks on description and voice name
+            has_female_words = bool(
+                re.search(r"\b(female|woman|women|girl|girls|actress|lady|ladies|she|her)\b", desc_lower)
+                or "female" in voice_name_lower
+                or "sophea" in voice_id_lower
+                or "sreymom" in voice_id_lower
+            )
+            has_male_words = bool(
+                re.search(r"\b(male|man|men|boy|boys|actor|actors|gentleman|gentlemen|he|his)\b", desc_lower)
+                or bool(re.search(r"\bmale\b", voice_name_lower))
+                or "dara" in voice_id_lower
+                or "piseth" in voice_id_lower
+            )
+            if has_female_words and not has_male_words:
+                is_female = True
+                is_male = False
+            elif has_male_words and not has_female_words:
+                is_female = False
+                is_male = True
+            else:
+                is_female = "sophea" in voice_id_lower or "sophea" in voice_name_lower
+                is_male = not is_female
 
         # If language is explicit English or no Khmer characters in English voice
         if effective_lang.startswith("en") and not has_khmer_script:
-            if (
-                modifier_gender == "female"
-                or "female" in voice_name_lower
-                or "sophea" in voice_id_lower
-            ):
-                return "en-US-JennyNeural"
-            return "en-US-GuyNeural"
+            return "en-US-JennyNeural" if is_female else "en-US-GuyNeural"
 
         # Native Khmer neural speakers
-        if (
-            modifier_gender == "female"
-            or "female" in voice_name_lower
-            or "sophea" in voice_id_lower
-        ):
-            return "km-KH-SreymomNeural"
-        return "km-KH-PisethNeural"
+        return "km-KH-SreymomNeural" if is_female else "km-KH-PisethNeural"
+
+    def _calculate_acoustic_params(self, voice: Voice, speed: float) -> tuple[str, str]:
+        """Compute rate and pitch strings, taking into account user sliders and description cues."""
+        desc_lower = (voice.description or "").lower()
+
+        # 1. Natural pacing: add +8% base so conversational Khmer speech is never dragging or slow
+        base_rate_bonus = 8
+        if any(w in desc_lower for w in ["young", "youthful", "actress", "energetic", "fast", "brisk", "dynamic"]):
+            base_rate_bonus += 5
+        elif any(w in desc_lower for w in ["calm", "slow", "deliberate", "relax", "soothing"]):
+            base_rate_bonus -= 6
+
+        user_speed = float(voice.modifiers.get("speed", 1.0)) * speed
+        speed_pct = base_rate_bonus + int(round((user_speed - 1.0) * 100))
+        rate_str = f"+{speed_pct}%" if speed_pct >= 0 else f"{speed_pct}%"
+
+        # 2. Natural pitch calculation: add youthful/actress brightness if specified in description
+        base_pitch_bonus = 0
+        if any(w in desc_lower for w in ["young", "youthful", "teen", "19 years", "girl", "high", "bright", "light tone"]):
+            base_pitch_bonus += 12
+        elif any(w in desc_lower for w in ["deep", "authoritative", "mature", "elderly", "low"]):
+            base_pitch_bonus -= 12
+
+        if "pitch_hz_offset" in voice.modifiers:
+            pitch_hz = int(voice.modifiers["pitch_hz_offset"]) + base_pitch_bonus
+            pitch_str = f"{pitch_hz:+d}Hz"
+        else:
+            user_pitch = float(voice.modifiers.get("pitch", 1.0))
+            pitch_val = base_pitch_bonus + int(round((user_pitch - 1.0) * 50))
+            pitch_str = f"+{pitch_val}Hz" if pitch_val >= 0 else f"{pitch_val}Hz"
+
+        return rate_str, pitch_str
 
     async def generate_speech(
         self,
@@ -78,32 +130,26 @@ class NeuralTtsEngine(BaseInferenceEngine):
             raise InferenceServiceError("Cannot synthesize empty text.")
 
         speaker = self._select_speaker(voice, text, language)
-
-        # Calculate speed rate parameter for edge-tts (e.g. +10%, -15%)
-        speed_factor = float(voice.modifiers.get("speed", 1.0)) * speed
-        speed_pct = int(round((speed_factor - 1.0) * 100))
-        rate_str = f"+{speed_pct}%" if speed_pct >= 0 else f"{speed_pct}%"
-
-        # Calculate pitch parameter using measured Hz offset if available, or factor
-        if "pitch_hz_offset" in voice.modifiers:
-            pitch_hz = int(voice.modifiers["pitch_hz_offset"])
-            pitch_str = f"{pitch_hz:+d}Hz"
-        else:
-            pitch_factor = float(voice.modifiers.get("pitch", 1.0))
-            pitch_val = int(round((pitch_factor - 1.0) * 50))
-            pitch_str = f"+{pitch_val}Hz" if pitch_val >= 0 else f"{pitch_val}Hz"
+        rate_str, pitch_str = self._calculate_acoustic_params(voice, speed)
 
         async def _call() -> tuple[bytes, float]:
-            comm = edge_tts.Communicate(
-                text=text.strip(),
-                voice=speaker,
-                rate=rate_str,
-                pitch=pitch_str,
-            )
             chunks: list[bytes] = []
-            async for chunk in comm.stream():
-                if chunk.get("type") == "audio" and "data" in chunk:
-                    chunks.append(chunk["data"])
+            for r_try, p_try in [(rate_str, pitch_str), (rate_str, "+0Hz"), ("+0%", "+0Hz")]:
+                try:
+                    comm = edge_tts.Communicate(
+                        text=text.strip(),
+                        voice=speaker,
+                        rate=r_try,
+                        pitch=p_try,
+                    )
+                    async for chunk in comm.stream():
+                        if chunk.get("type") == "audio" and "data" in chunk:
+                            chunks.append(chunk["data"])
+                    if chunks:
+                        break
+                except Exception as stream_err:
+                    logger.warning("edge_tts_attempt_failed", rate=r_try, pitch=p_try, error=str(stream_err))
+                    chunks.clear()
 
             if not chunks:
                 raise InferenceServiceError(f"No audio stream received from speaker {speaker}.")
@@ -140,11 +186,26 @@ class NeuralTtsEngine(BaseInferenceEngine):
         feature_token = f"emb_{uuid.uuid4().hex[:16]}"
         speaker = "km-KH-SreymomNeural" if language.startswith("km") else "en-US-GuyNeural"
 
-        try:
-            comm = edge_tts.Communicate(DEFAULT_PREVIEW_TEXT, speaker)
-            chunks = [c["data"] async for c in comm.stream() if c.get("type") == "audio"]
-            preview_bytes = b"".join(chunks) if chunks else reference_audio_bytes
-        except Exception:
+        preview_bytes = b""
+        for r_try, p_try in [("+0%", "+0Hz")]:
+            try:
+                comm = edge_tts.Communicate(DEFAULT_PREVIEW_TEXT, speaker, rate=r_try, pitch=p_try)
+                chunks = [c["data"] async for c in comm.stream() if c.get("type") == "audio"]
+                if chunks:
+                    preview_bytes = b"".join(chunks)
+                    break
+            except Exception:
+                preview_bytes = b""
+
+        if preview_bytes:
+            try:
+                data, sample_rate = sf.read(io.BytesIO(preview_bytes), dtype="float32")
+                out_buf = io.BytesIO()
+                sf.write(out_buf, data, sample_rate, format="WAV", subtype="PCM_16")
+                preview_bytes = out_buf.getvalue()
+            except Exception:
+                pass
+        else:
             preview_bytes = reference_audio_bytes
 
         return feature_token, preview_bytes
@@ -156,26 +217,42 @@ class NeuralTtsEngine(BaseInferenceEngine):
     ) -> tuple[str, bytes]:
         """Derive acoustic profile variation and return spoken preview audio."""
         derived_token = f"emb_var_{uuid.uuid4().hex[:16]}"
-        speaker = self._select_speaker(base_voice, DEFAULT_PREVIEW_TEXT, base_voice.language)
+        effective_voice = Voice(
+            id=base_voice.id,
+            name=base_voice.name,
+            voice_type=base_voice.voice_type,
+            owner_id=base_voice.owner_id,
+            language=base_voice.language,
+            description=modifiers.get("description") or base_voice.description,
+            modifiers=modifiers,
+            visibility=base_voice.visibility,
+        )
+        speaker = self._select_speaker(effective_voice, DEFAULT_PREVIEW_TEXT, base_voice.language)
+        rate_str, pitch_str = self._calculate_acoustic_params(effective_voice, 1.0)
 
-        pitch_factor = float(modifiers.get("pitch", 1.0))
-        pitch_val = int(round((pitch_factor - 1.0) * 50))
-        pitch_str = f"+{pitch_val}Hz" if pitch_val >= 0 else f"{pitch_val}Hz"
+        preview_bytes = b""
+        for r_try, p_try in [(rate_str, pitch_str), (rate_str, "+0Hz"), ("+0%", "+0Hz")]:
+            try:
+                comm = edge_tts.Communicate(
+                    DEFAULT_PREVIEW_TEXT,
+                    speaker,
+                    rate=r_try,
+                    pitch=p_try,
+                )
+                chunks = [c["data"] async for c in comm.stream() if c.get("type") == "audio"]
+                if chunks:
+                    preview_bytes = b"".join(chunks)
+                    break
+            except Exception:
+                continue
 
-        speed_factor = float(modifiers.get("speed", 1.0))
-        speed_pct = int(round((speed_factor - 1.0) * 100))
-        rate_str = f"+{speed_pct}%" if speed_pct >= 0 else f"{speed_pct}%"
-
-        try:
-            comm = edge_tts.Communicate(
-                DEFAULT_PREVIEW_TEXT,
-                speaker,
-                rate=rate_str,
-                pitch=pitch_str,
-            )
-            chunks = [c["data"] async for c in comm.stream() if c.get("type") == "audio"]
-            preview_bytes = b"".join(chunks) if chunks else b""
-        except Exception:
-            preview_bytes = b""
+        if preview_bytes:
+            try:
+                data, sample_rate = sf.read(io.BytesIO(preview_bytes), dtype="float32")
+                out_buf = io.BytesIO()
+                sf.write(out_buf, data, sample_rate, format="WAV", subtype="PCM_16")
+                preview_bytes = out_buf.getvalue()
+            except Exception:
+                pass
 
         return derived_token, preview_bytes

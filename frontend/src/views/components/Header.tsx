@@ -1,9 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Key, CheckCircle2, AlertCircle } from "lucide-react";
+import { Key } from "lucide-react";
 import { apiClient } from "@/controllers/apiClient";
-import { Badge } from "@/views/components/ui/badge";
-import { Button } from "@/views/components/ui/button";
 
 interface HeaderProps {
   onNavigateKeys?: () => void;
@@ -12,7 +10,6 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({ onNavigateKeys }) => {
   const navigate = useNavigate();
   const [apiKey, setApiKey] = useState<string | null>(apiClient.getApiKey());
-  const [isHealthy, setIsHealthy] = useState<boolean | null>(null);
 
   const handleNavigateToKeys = () => {
     if (onNavigateKeys) {
@@ -23,11 +20,6 @@ export const Header: React.FC<HeaderProps> = ({ onNavigateKeys }) => {
   };
 
   useEffect(() => {
-    apiClient
-      .getHealth()
-      .then(() => setIsHealthy(true))
-      .catch(() => setIsHealthy(false));
-
     const checkKeyInterval = setInterval(() => {
       setApiKey(apiClient.getApiKey());
     }, 1000);
@@ -35,54 +27,43 @@ export const Header: React.FC<HeaderProps> = ({ onNavigateKeys }) => {
     return () => clearInterval(checkKeyInterval);
   }, []);
 
+  const formatMaskedKey = (key: string) => {
+    if (key.length <= 12) return key;
+    return `${key.slice(0, 8)}...${key.slice(-4)}`;
+  };
+
   return (
-    <header className="h-16 px-6 border-b border-border bg-background flex items-center justify-between">
+    <header className="h-16 px-6 md:px-8 bg-white border-b border-[#E8EDF5] flex items-center justify-between relative z-20">
       <div className="flex items-center gap-3">
-        <h1 className="text-base font-semibold text-foreground tracking-tight">
+        <h1 className="text-base font-semibold text-[#15213D] tracking-tight">
           Vocara Voice Studio
         </h1>
-        {isHealthy !== null && (
-          <Badge
-            variant={isHealthy ? "secondary" : "destructive"}
-            className="flex items-center gap-1.5 text-xs font-normal"
-          >
-            {isHealthy ? (
-              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-            ) : (
-              <AlertCircle className="h-3.5 w-3.5" />
-            )}
-            <span>{isHealthy ? "Engine Ready" : "Offline"}</span>
-          </Badge>
-        )}
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 text-xs">
         {apiKey ? (
-          <div className="flex items-center gap-2 px-3 py-1.5 border border-border rounded text-xs text-muted-foreground">
-            <Key className="h-3.5 w-3.5 text-sky-600" />
-            <span>Key:</span>
-            <span className="font-mono text-foreground font-medium">
-              {apiKey.slice(0, 8)}...{apiKey.slice(-4)}
+          <div className="flex items-center gap-2 text-[#64748B]">
+            <Key className="h-3.5 w-3.5 text-[#1264F5]" />
+            <span className="text-[#15213D] font-normal">
+              Key: <span className="font-mono font-medium">{formatMaskedKey(apiKey)}</span>
             </span>
-            <Button
-              variant="ghost"
-              size="sm"
+            <button
+              type="button"
               onClick={handleNavigateToKeys}
-              className="h-6 px-2 text-xs text-sky-600 hover:text-sky-700"
+              className="text-[#1264F5] hover:underline font-medium ml-1 transition-colors"
             >
               Change
-            </Button>
+            </button>
           </div>
         ) : (
-          <Button
-            variant="outline"
-            size="sm"
+          <button
+            type="button"
             onClick={handleNavigateToKeys}
-            className="text-xs border-destructive text-destructive hover:bg-destructive/10"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-[#1264F5] bg-[#EBF2FE] hover:bg-[#DCE9FE] transition-colors"
           >
-            <Key className="h-3.5 w-3.5 mr-1.5" />
-            Set API Key
-          </Button>
+            <Key className="h-3.5 w-3.5" />
+            <span>Set API Key</span>
+          </button>
         )}
       </div>
     </header>

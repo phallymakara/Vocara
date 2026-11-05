@@ -62,46 +62,55 @@ class Container:
             async with self.db_engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
 
-            async with self.session_factory() as session:
-                from vocara.domain.entities import Voice
-                from vocara.domain.enums import VoiceType, VoiceVisibility
-                from vocara.infrastructure.db.repositories.voice_repo import SqlVoiceRepository
+        async with self.session_factory() as session:
+            from vocara.domain.entities import Voice
+            from vocara.domain.enums import VoiceType, VoiceVisibility
+            from vocara.infrastructure.db.repositories.voice_repo import SqlVoiceRepository
 
-                voice_repo = SqlVoiceRepository(session)
-                existing = await voice_repo.list_accessible_voices(owner_id="", limit=1)
+            voice_repo = SqlVoiceRepository(session)
+            default_voices = [
+                Voice(
+                    id="voice-sophea-built-in",
+                    name="Sophea (Default Female)",
+                    voice_type=VoiceType.BUILT_IN,
+                    owner_id=None,
+                    language="km-KH",
+                    visibility=VoiceVisibility.PUBLIC,
+                    description="Clear, expressive female voice optimized for narration.",
+                    reference_audio_key="voices/voice-sophea-built-in/preview.wav",
+                    preview_audio_key="voices/voice-sophea-built-in/preview.wav",
+                    modifiers={"gender": "female"},
+                ),
+                Voice(
+                    id="voice-dara-built-in",
+                    name="Dara (Default Male)",
+                    voice_type=VoiceType.BUILT_IN,
+                    owner_id=None,
+                    language="km-KH",
+                    visibility=VoiceVisibility.PUBLIC,
+                    description="Authoritative, warm male voice ideal for storytelling.",
+                    reference_audio_key="voices/d51a6ac7-6059-4adf-a93a-55ffacffea2d/reference.wav",
+                    preview_audio_key="voices/d51a6ac7-6059-4adf-a93a-55ffacffea2d/preview.wav",
+                    modifiers={"gender": "male"},
+                ),
+                Voice(
+                    id="voice-alex-built-in",
+                    name="Alex (English Natural)",
+                    voice_type=VoiceType.BUILT_IN,
+                    owner_id=None,
+                    language="en-US",
+                    visibility=VoiceVisibility.PUBLIC,
+                    description="Natural, balanced English voice for general purposes.",
+                    reference_audio_key=None,
+                    preview_audio_key=None,
+                    modifiers={"gender": "neutral"},
+                ),
+            ]
+            for v in default_voices:
+                existing = await voice_repo.get_by_id(v.id)
                 if not existing:
-                    default_voices = [
-                        Voice(
-                            id="voice-sophea-built-in",
-                            name="Sophea (Default Female)",
-                            voice_type=VoiceType.BUILT_IN,
-                            owner_id=None,
-                            language="km",
-                            visibility=VoiceVisibility.PUBLIC,
-                            description="Clear, expressive female voice optimized for narration.",
-                        ),
-                        Voice(
-                            id="voice-dara-built-in",
-                            name="Dara (Default Male)",
-                            voice_type=VoiceType.BUILT_IN,
-                            owner_id=None,
-                            language="km",
-                            visibility=VoiceVisibility.PUBLIC,
-                            description="Authoritative, warm male voice ideal for storytelling.",
-                        ),
-                        Voice(
-                            id="voice-alex-built-in",
-                            name="Alex (English Natural)",
-                            voice_type=VoiceType.BUILT_IN,
-                            owner_id=None,
-                            language="en",
-                            visibility=VoiceVisibility.PUBLIC,
-                            description="Natural, balanced English voice for general purposes.",
-                        ),
-                    ]
-                    for v in default_voices:
-                        await voice_repo.create(v)
-                    await session.commit()
+                    await voice_repo.create(v)
+            await session.commit()
 
         # Storage initialization
         if self.settings.STORAGE_BACKEND == "azure" and self.settings.AZURE_STORAGE_CONNECTION_STRING:

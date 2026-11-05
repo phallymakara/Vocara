@@ -1,7 +1,9 @@
 """HTTP error handlers mapping domain exceptions to standard JSON responses."""
 
 import structlog
+from typing import Any
 from fastapi import FastAPI, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from vocara.core.exceptions import (
@@ -21,6 +23,31 @@ logger = structlog.get_logger("vocara.error_handlers")
 
 def register_error_handlers(app: FastAPI) -> None:
     """Attach standard exception handlers to the FastAPI application."""
+
+    @app.exception_handler(RequestValidationError)
+    async def handle_validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
+        logger.warning("request_validation_error", errors=exc.errors())
+        formatted_errors: list[dict[str, Any]] = []
+        for err in exc.errors():
+            loc = err.get("loc", [])
+            field = str(loc[-1]) if loc else "general"
+            msg = err.get("msg", "Invalid value")
+            formatted_errors.append({
+                "field": field,
+                "message": msg,
+                "type": err.get("type", "validation_error"),
+            })
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            content={
+                "detail": exc.errors(),
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "Input validation failed. Please check the entered fields.",
+                    "fields": formatted_errors,
+                },
+            },
+        )
 
     @app.exception_handler(EntityNotFoundError)
     async def handle_not_found(_: Request, exc: EntityNotFoundError) -> JSONResponse:
