@@ -46,11 +46,9 @@ export const ApiKeysPage: React.FC = () => {
   const [selectedMcpTab, setSelectedMcpTab] = useState<"cursor" | "claude" | "python" | "typescript">("cursor");
   const [copiedSnippet, setCopiedSnippet] = useState(false);
 
-  const baseUrl = typeof window !== "undefined"
-    ? (window.location.port === "3000"
-        ? `${window.location.protocol}//${window.location.hostname}:8002`
-        : window.location.origin)
-    : "http://localhost:8002";
+  const baseUrl =
+    (import.meta.env.VITE_MCP_BASE_URL as string | undefined)?.replace(/\/+$/, "") ||
+    (typeof window !== "undefined" ? window.location.origin : "");
 
   const effectiveKey = activeKeyInput?.trim() || "voc_YOUR_API_KEY";
   const sseEndpointUrl = `${baseUrl}/mcp/sse?api_key=${effectiveKey}`;
@@ -94,8 +92,8 @@ async def main():
             
             # 2. Synthesize speech
             result = await session.call_tool("vocara_generate_speech", {
-                "text": "សួស្តីពិភពលោក",
-                "voice_id": "voice-sophea-built-in",
+                "text": voices[0]["sample_text"] if voices else "Hello",
+                "voice_id": voices[0]["id"],
                 "output_format": "mp3"
             })
             print("Synthesis result:", result)

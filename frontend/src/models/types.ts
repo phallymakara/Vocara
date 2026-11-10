@@ -79,6 +79,16 @@ export interface SystemLanguage {
   name: string;
   native_name: string;
   voice_count: number;
+  is_default?: boolean;
+  default_preview_text?: string;
+}
+
+export interface DesignPreviewResponse {
+  audio_base64: string;
+  content_type: string;
+  duration_seconds: number;
+  control_instruction: string;
+  preview_text: string;
 }
 
 export interface SystemAudioFormat {

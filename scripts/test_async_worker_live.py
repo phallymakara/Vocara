@@ -40,23 +40,24 @@ async def run_live_worker_test():
     owner_id = "dev_worker_verification_owner"
 
     try:
-        # 1. Ensure test voice exists in PostgreSQL
+        # 1. Resolve an accessible test voice dynamically from PostgreSQL
         async with container.session_factory() as session:
             voice_repo = container.get_voice_repo(session)
-            test_voice_id = "voice-sophea-built-in"
-            voice = await voice_repo.get_by_id(test_voice_id)
+            accessible = await voice_repo.list_accessible_voices(owner_id=owner_id, limit=1)
+            voice = accessible[0] if accessible else None
             if not voice:
                 voice = Voice(
-                    id=test_voice_id,
-                    name="Sophea Default",
+                    id=f"voice-worker-test-{uuid.uuid4().hex[:8]}",
+                    name="Worker Test Voice",
                     voice_type=VoiceType.BUILT_IN,
                     owner_id=None,
-                    language="km",
+                    language="km-KH",
                     visibility=VoiceVisibility.PUBLIC,
                     description="Standard test voice.",
                 )
                 await voice_repo.create(voice)
                 await session.commit()
+            test_voice_id = voice.id
             print(f"[1] Verified target voice: {voice.name} ({voice.id})")
 
             # 2. Insert queued job into PostgreSQL

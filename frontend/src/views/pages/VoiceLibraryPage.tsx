@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { Plus, Sliders, Play, Pause, Upload, Loader2, ChevronDown, ChevronRight, Copy, Check, Edit2, Trash2, Mic } from "lucide-react";
+import { Plus, Sliders, Play, Pause, Upload, Loader2, ChevronDown, ChevronRight, Copy, Check, Edit2, Trash2, Mic, RefreshCw } from "lucide-react";
 import { useVoiceController } from "@/controllers/useVoiceController";
 import { Button } from "@/views/components/ui/button";
 import { Input } from "@/views/components/ui/input";
@@ -30,6 +30,7 @@ export const VoiceLibraryPage: React.FC = () => {
     closeModal,
     cloneName,
     setCloneName,
+    cloneLang,
     setCloneFile,
     clonePromptText,
     setClonePromptText,
@@ -61,6 +62,16 @@ export const VoiceLibraryPage: React.FC = () => {
     isSubmittingDesign,
     designErrors,
     submitDesign,
+    // Design Audition Preview
+    designPreviewText,
+    setDesignPreviewText,
+    designPreviewAudioUrl,
+    designPreviewDuration,
+    isGeneratingDesignPreview,
+    isPlayingDesignPreview,
+    generateDesignPreview,
+    togglePlayDesignPreview,
+    getDefaultPreviewForLanguage,
     // Edit
     editingVoice,
     editName,
@@ -239,16 +250,21 @@ export const VoiceLibraryPage: React.FC = () => {
                   <p
                     className="text-[11px] text-muted-foreground/80 font-mono truncate"
                     title={
-                      voice.language.startsWith("en")
-                        ? "Sample phrase: Hello, I am Vocara, an AI text-to-speech converter."
-                        : "Sample phrase: សួស្តីខ្ញុំជាវូការាជាអេអាយបម្លែងអក្សរទៅជាសម្លេង"
+                      String(
+                        voice.modifiers?.prompt_text ||
+                          getDefaultPreviewForLanguage(voice.language) ||
+                          voice.description ||
+                          voice.name
+                      )
                     }
                   >
                     Preview: &ldquo;
-                    {voice.language.startsWith("en")
-                      ? "Hello, I am Vocara..."
-                      : "សួស្តីខ្ញុំជាវូការា..."}
-                    &rdquo;
+                    {String(
+                      voice.modifiers?.prompt_text ||
+                        getDefaultPreviewForLanguage(voice.language) ||
+                        voice.name
+                    ).slice(0, 32)}
+                    ...&rdquo;
                   </p>
 
                   <div className="flex items-center justify-between pt-2 border-t border-border">
@@ -387,14 +403,14 @@ export const VoiceLibraryPage: React.FC = () => {
                 <span className="font-medium text-foreground">Recommended Script to Read:</span>
                 <button
                   type="button"
-                  onClick={() => setClonePromptText("សួស្តី ខ្ញុំជាវូការា ជាអេអាយបម្លែងអក្សរទៅជាសម្លេង។")}
+                  onClick={() => setClonePromptText(getDefaultPreviewForLanguage(cloneLang))}
                   className="text-[11px] text-primary hover:underline font-normal cursor-pointer"
                 >
                   Use this script
                 </button>
               </div>
               <p className="text-muted-foreground select-all font-sans font-medium">
-                &ldquo;សួស្តី ខ្ញុំជាវូការា ជាអេអាយបម្លែងអក្សរទៅជាសម្លេង។&rdquo;
+                &ldquo;{getDefaultPreviewForLanguage(cloneLang)}&rdquo;
               </p>
               <p className="text-[11px] text-muted-foreground">
                 Speaking this phrase provides the optimal acoustic foundation for your cloned preview.
@@ -571,14 +587,65 @@ export const VoiceLibraryPage: React.FC = () => {
               )}
             </div>
 
-            <div className="rounded border border-border bg-muted/20 p-2.5 text-xs space-y-1">
-              <span className="font-medium text-foreground">Preview Phrase:</span>
-              <p className="text-muted-foreground select-all font-sans font-medium">
-                &ldquo;សួស្តី ខ្ញុំជាវូការា ជាអេអាយបម្លែងអក្សរទៅជាសម្លេង។&rdquo;
-              </p>
-              <p className="text-[11px] text-muted-foreground">
-                The designed acoustic variation will be automatically previewed using this phrase.
-              </p>
+            <div className="space-y-1.5">
+              <Label htmlFor="design-preview-text">Preview Phrase</Label>
+              <textarea
+                id="design-preview-text"
+                value={designPreviewText}
+                onChange={(e) => setDesignPreviewText(e.target.value)}
+                rows={2}
+                maxLength={500}
+                className="w-full px-3 py-2 text-xs bg-background border border-input rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-y min-h-[56px]"
+              />
+              <div className="flex items-center justify-between gap-2 pt-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={generateDesignPreview}
+                  disabled={isGeneratingDesignPreview || isSubmittingDesign}
+                  className="h-8 text-xs"
+                >
+                  {isGeneratingDesignPreview ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                      Generating Preview...
+                    </>
+                  ) : designPreviewAudioUrl ? (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                      Regenerate
+                    </>
+                  ) : (
+                    <>
+                      <Play className="h-3.5 w-3.5 mr-1.5" />
+                      Generate Preview
+                    </>
+                  )}
+                </Button>
+
+                {designPreviewAudioUrl && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={togglePlayDesignPreview}
+                    className="h-8 text-xs"
+                  >
+                    {isPlayingDesignPreview ? (
+                      <>
+                        <Pause className="h-3.5 w-3.5 mr-1.5" />
+                        Stop ({designPreviewDuration.toFixed(1)}s)
+                      </>
+                    ) : (
+                      <>
+                        <Play className="h-3.5 w-3.5 mr-1.5" />
+                        Listen ({designPreviewDuration.toFixed(1)}s)
+                      </>
+                    )}
+                  </Button>
+                )}
+              </div>
             </div>
 
             {/* Advanced Options Accordion */}

@@ -10,6 +10,7 @@ from fastapi.security.api_key import APIKeyHeader
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vocara.container import Container
+from vocara.core.config import Settings
 from vocara.core.exceptions import AuthenticationError
 from vocara.core.logging import tenant_id_ctx, user_id_ctx
 from vocara.domain.entities import ApiKey
@@ -134,7 +135,7 @@ async def get_optional_api_key(
 
     if settings.ENVIRONMENT == "development":
         dev_key = await auth_service.get_or_create_dev_key()
-        user_id = dev_key.owner_id or "default_developer"
+        user_id = dev_key.owner_id or settings.DEFAULT_DEV_OWNER_ID
         tenant_id = dev_key.owner_id or "default"
         user_id_ctx.set(user_id)
         tenant_id_ctx.set(tenant_id)
@@ -181,7 +182,7 @@ async def get_current_api_key(
 
     if settings.ENVIRONMENT == "development":
         dev_key = await auth_service.get_or_create_dev_key()
-        user_id = dev_key.owner_id or "dev_user"
+        user_id = dev_key.owner_id or settings.DEFAULT_DEV_OWNER_ID
         tenant_id = dev_key.owner_id or "default"
         user_id_ctx.set(user_id)
         tenant_id_ctx.set(tenant_id)

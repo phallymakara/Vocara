@@ -99,14 +99,15 @@ class InferenceEngine(Protocol):
         self,
         reference_audio_bytes: bytes,
         language: str,
-    ) -> tuple[str, bytes]:
-        """Process reference audio and return (reference_features_token, sample_audio_bytes)."""
+    ) -> tuple[str, bytes] | tuple[str, bytes, str]:
+        """Process reference audio and return (reference_features_token, sample_audio_bytes[, detected_prompt])."""
         ...
 
     async def design_voice(
         self,
         base_voice: Voice,
         modifiers: dict[str, Any],
+        preview_text: str | None = None,
     ) -> tuple[str, bytes]:
         """Create a voice variation and return (derived_features_token, preview_audio_bytes)."""
         ...

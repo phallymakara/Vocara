@@ -106,15 +106,17 @@ class ColorizedConsoleRenderer:
         if event == "application_startup":
             env = event_dict.get("environment", "development")
             host = event_dict.get("host", "0.0.0.0")
-            port = event_dict.get("port", 8002)
-            return f"{ts_badge}{self.GREEN}Vocara Voice API starting{self.RESET} in {env} mode (http://{host}:{port})"
+            port = event_dict.get("port", "")
+            port_part = f":{port}" if port else ""
+            return f"{ts_badge}{self.GREEN}Vocara Voice API starting{self.RESET} in {env} mode (http://{host}{port_part})"
 
         if event == "application_ready":
             host = event_dict.get("host", "0.0.0.0")
-            port = event_dict.get("port", 8002)
+            port = event_dict.get("port", "")
+            port_part = f":{port}" if port else ""
             docs = event_dict.get("docsUrl", "")
             docs_info = f" {self.DIM}(Docs: {docs}){self.RESET}" if docs else ""
-            return f"{ts_badge}{self.GREEN}Vocara Voice API ready{self.RESET} on http://{host}:{port}{docs_info}"
+            return f"{ts_badge}{self.GREEN}Vocara Voice API ready{self.RESET} on http://{host}{port_part}{docs_info}"
 
         if event == "application_shutdown":
             return f"{ts_badge}{self.YELLOW}Vocara Voice API shut down{self.RESET}"

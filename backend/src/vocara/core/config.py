@@ -1,10 +1,50 @@
 """Application configuration using Pydantic Settings."""
 
 from functools import lru_cache
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _default_seed_voices() -> list[dict[str, Any]]:
+    """Default built-in voice definitions (overridable via DEFAULT_SEED_VOICES env JSON)."""
+    return [
+        {
+            "id": "voice-sophea-built-in",
+            "name": "Sophea (Default Female)",
+            "language": "km-KH",
+            "description": "Warm, friendly Cambodian woman speaking natural conversational Khmer.",
+            "reference_audio_key": "voices/voice-sophea-built-in/preview.wav",
+            "preview_audio_key": "voices/voice-sophea-built-in/preview.wav",
+            "modifiers": {
+                "gender": "female",
+                "control_instruction": "young Cambodian woman, warm gentle friendly conversational tone, natural pace",
+            },
+        },
+        {
+            "id": "voice-dara-built-in",
+            "name": "Dara (Default Male)",
+            "language": "km-KH",
+            "description": "Calm, authoritative Cambodian man speaking clear conversational Khmer.",
+            "reference_audio_key": "voices/voice-dara-built-in/preview.wav",
+            "preview_audio_key": "voices/voice-dara-built-in/preview.wav",
+            "modifiers": {
+                "gender": "male",
+                "control_instruction": "adult Cambodian man, warm deep resonant voice, calm conversational pace",
+            },
+        },
+        {
+            "id": "voice-alex-built-in",
+            "name": "Alex (English Natural)",
+            "language": "en-US",
+            "description": "Natural, balanced English speaker for general conversational audio.",
+            "modifiers": {
+                "gender": "neutral",
+                "control_instruction": "adult speaker, natural balanced clear conversational voice, moderate pace",
+            },
+        },
+    ]
 
 
 class Settings(BaseSettings):
@@ -66,7 +106,17 @@ class Settings(BaseSettings):
     MODAL_API_TOKEN: str | None = None
     HUGGINGFACE_API_KEY: str | None = None
     HUGGINGFACE_ENDPOINT_URL: str | None = None
-    HUGGINGFACE_MODEL_ID: str = "openbmb/VoxCPM2"
+    HUGGINGFACE_MODEL_ID: str = "ravuthz/VoxCPM2-khmer"
+    VOXCPM_MODEL_ID: str = "ravuthz/VoxCPM2-khmer"
+    VOXCPM_LORA_ID: str = ""
+    VOXCPM_INFERENCE_TIMESTEPS: int = 20
+    VOXCPM_CFG_VALUE: float = 2.0
+    VOXCPM_MAX_CHUNK_CHARS: int = 450
+    AUDIO_SAMPLE_RATE_HZ: int = 48000
+    DEFAULT_PREVIEW_TEXT_KM: str = "សួស្តី ខ្ញុំជាវូការា ជាអេអាយបម្លែងអក្សរទៅជាសម្លេង។"
+    DEFAULT_PREVIEW_TEXT_EN: str = "Hello, I am Vocara, an AI text-to-speech converter."
+    DEFAULT_DEV_OWNER_ID: str = "default_developer"
+    DEFAULT_SEED_VOICES: list[dict[str, Any]] = Field(default_factory=_default_seed_voices)
     INFERENCE_TIMEOUT_SECONDS: int = 60
 
     # Rate Limiting & Quotas
@@ -103,6 +153,23 @@ class Settings(BaseSettings):
         if isinstance(value, (list, tuple, set)):
             return [str(origin).strip() for origin in value if str(origin).strip()]
         return ["http://localhost:3000", "http://127.0.0.1:3000"]
+
+    @field_validator("DEFAULT_SEED_VOICES", mode="before")
+    @classmethod
+    def parse_default_seed_voices(cls, value: object) -> list[dict[str, Any]]:
+        """Parse JSON list of built-in seed voices from environment configuration."""
+        import json
+
+        if isinstance(value, str):
+            val = value.strip()
+            if not val:
+                return _default_seed_voices()
+            parsed = json.loads(val)
+            if isinstance(parsed, list):
+                return [dict(item) for item in parsed if isinstance(item, dict)]
+        if isinstance(value, list):
+            return [dict(item) for item in value if isinstance(item, dict)]
+        return _default_seed_voices()
 
     @model_validator(mode="after")
     def validate_production_security(self) -> "Settings":

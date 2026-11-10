@@ -33,6 +33,40 @@ class UpdateVoiceRequest(BaseModel):
     modifiers: dict[str, Any] | None = None
 
 
+class DesignPreviewRequest(BaseModel):
+    """Payload for auditioning a voice design variation before saving."""
+
+    base_voice_id: str | None = Field(
+        default=None, description="ID of the parent voice to derive from"
+    )
+    gender: str | None = Field(
+        default="female", description="Speaker gender profile: female, male, neutral"
+    )
+    pitch: float | None = Field(
+        default=1.0, ge=0.5, le=2.0, description="Pitch modifier factor (0.5 - 2.0)"
+    )
+    speed: float | None = Field(
+        default=1.0, ge=0.5, le=2.0, description="Speed modifier factor (0.5 - 2.0)"
+    )
+    emotion: str | None = Field(default=None, max_length=50, description="Target emotion tag")
+    style: str | None = Field(default=None, max_length=50, description="Target speech style")
+    description: str = Field(default="", max_length=2000)
+    preview_text: str | None = Field(
+        default=None, max_length=500, description="Custom conversational preview phrase"
+    )
+    extra_modifiers: dict[str, Any] = Field(default_factory=dict)
+
+
+class DesignPreviewResponse(BaseModel):
+    """Audition response containing synthesized preview audio before saving."""
+
+    audio_base64: str
+    content_type: str = "audio/wav"
+    duration_seconds: float
+    control_instruction: str
+    preview_text: str
+
+
 class DesignVoiceRequest(BaseModel):
     """Payload for creating a derivative voice design variation."""
 
@@ -54,3 +88,9 @@ class DesignVoiceRequest(BaseModel):
     description: str = Field(default="", max_length=2000)
     visibility: VoiceVisibility = Field(default=VoiceVisibility.PRIVATE)
     extra_modifiers: dict[str, Any] = Field(default_factory=dict)
+    preview_text: str | None = Field(
+        default=None, max_length=500, description="Preview text spoken in audited audio"
+    )
+    preview_audio_base64: str | None = Field(
+        default=None, description="Pre-auditioned base64 WAV audio to persist directly"
+    )

@@ -15,10 +15,13 @@ import time
 from pathlib import Path
 import httpx
 
-MODAL_URL = os.environ.get(
-    "MODAL_API_ENDPOINT",
-    "https://phallymakara01--vocara-voxcpm-fastapi-app.us-east.modal.run"
-).rstrip("/")
+from dotenv import load_dotenv
+
+load_dotenv("backend/.env")
+
+MODAL_URL = os.environ.get("MODAL_API_ENDPOINT", "").rstrip("/")
+if not MODAL_URL:
+    raise RuntimeError("MODAL_API_ENDPOINT must be set in environment or backend/.env")
 
 OUTPUT_DIR = Path("scripts/test_outputs")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)

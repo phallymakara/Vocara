@@ -114,6 +114,7 @@ class FakeInferenceEngine(BaseInferenceEngine):
         self,
         base_voice: Voice,
         modifiers: dict[str, Any],
+        preview_text: str | None = None,
     ) -> tuple[str, bytes]:
         """Simulate deriving a modified voice profile and returning preview."""
         derived_token = f"emb_var_{uuid.uuid4().hex[:16]}"

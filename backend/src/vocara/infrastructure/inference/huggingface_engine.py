@@ -18,8 +18,6 @@ from vocara.utils.audio import get_audio_duration_seconds
 
 logger = structlog.get_logger("vocara.inference.huggingface")
 
-BACKUP_REPLICA_SPACE = "https://Kansasfan-voxcpm2-zerogpu-backend.hf.space"
-
 
 class HuggingFaceInferenceEngine(BaseInferenceEngine):
     """Adapter for remote VoxCPM execution on Hugging Face Spaces or Inference Endpoints."""
@@ -28,12 +26,13 @@ class HuggingFaceInferenceEngine(BaseInferenceEngine):
         self,
         endpoint_url: str | None = None,
         api_token: str | None = None,
-        model_id: str = "openbmb/VoxCPM2",
+        model_id: str = "",
         timeout_seconds: int = 120,
         max_retries: int = 2,
         http_client: httpx.AsyncClient | None = None,
         storage: BlobStorage | None = None,
         fallback_engine: BaseInferenceEngine | None = None,
+        backup_endpoint_url: str | None = None,
     ) -> None:
         super().__init__(timeout_seconds=timeout_seconds, max_retries=max_retries)
         self.endpoint_url = endpoint_url
@@ -42,6 +41,7 @@ class HuggingFaceInferenceEngine(BaseInferenceEngine):
         self._client = http_client
         self.storage = storage
         self.fallback_engine = fallback_engine
+        self.backup_endpoint_url = backup_endpoint_url
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
@@ -285,15 +285,15 @@ class HuggingFaceInferenceEngine(BaseInferenceEngine):
                             ref_audio_bytes=raw_ref_bytes,
                         )
                     except Exception as primary_err:
-                        if clean_url != BACKUP_REPLICA_SPACE:
+                        if self.backup_endpoint_url and clean_url != self.backup_endpoint_url:
                             logger.info(
                                 "hf_trying_backup_space",
-                                backup=BACKUP_REPLICA_SPACE,
+                                backup=self.backup_endpoint_url,
                                 primary_error=str(primary_err),
                             )
                             return await self._gradio_generate(
                                 client=client,
-                                clean_url=BACKUP_REPLICA_SPACE,
+                                clean_url=self.backup_endpoint_url,
                                 text=text,
                                 voice=voice,
                                 ref_audio_bytes=raw_ref_bytes,
@@ -415,15 +415,15 @@ class HuggingFaceInferenceEngine(BaseInferenceEngine):
                             ref_audio_bytes=reference_audio_bytes,
                         )
                     except Exception as primary_err:
-                        if clean_url != BACKUP_REPLICA_SPACE:
+                        if self.backup_endpoint_url and clean_url != self.backup_endpoint_url:
                             logger.info(
                                 "hf_clone_trying_backup_space",
-                                backup=BACKUP_REPLICA_SPACE,
+                                backup=self.backup_endpoint_url,
                                 primary_error=str(primary_err),
                             )
                             audio_bytes, _ = await self._gradio_generate(
                                 client=client,
-                                clean_url=BACKUP_REPLICA_SPACE,
+                                clean_url=self.backup_endpoint_url,
                                 text=DEFAULT_PREVIEW_TEXT,
                                 ref_audio_bytes=reference_audio_bytes,
                             )
@@ -467,6 +467,7 @@ class HuggingFaceInferenceEngine(BaseInferenceEngine):
         self,
         base_voice: Voice,
         modifiers: dict[str, Any],
+        preview_text: str | None = None,
     ) -> tuple[str, bytes]:
         """Derive acoustic profile tokens on remote Hugging Face endpoint."""
         clean_url = self.endpoint_url.rstrip("/") if self.endpoint_url else ""
@@ -490,10 +491,10 @@ class HuggingFaceInferenceEngine(BaseInferenceEngine):
                             ref_audio_bytes=base_ref_bytes,
                         )
                     except Exception as primary_err:
-                        if clean_url != BACKUP_REPLICA_SPACE:
+                        if self.backup_endpoint_url and clean_url != self.backup_endpoint_url:
                             preview_bytes, _ = await self._gradio_generate(
                                 client=client,
-                                clean_url=BACKUP_REPLICA_SPACE,
+                                clean_url=self.backup_endpoint_url,
                                 text=DEFAULT_PREVIEW_TEXT,
                                 voice=base_voice,
                                 ref_audio_bytes=base_ref_bytes,

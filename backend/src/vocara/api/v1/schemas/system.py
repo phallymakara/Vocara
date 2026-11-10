@@ -11,6 +11,7 @@ class LanguageInfo(BaseModel):
     native_name: str
     voice_count: int
     is_default: bool
+    default_preview_text: str = ""
 
 
 class FormatInfo(BaseModel):

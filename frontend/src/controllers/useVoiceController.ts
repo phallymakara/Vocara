@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { apiClient, ApiError } from "@/controllers/apiClient";
-import type { VoiceItem } from "@/models/types";
+import type { SystemLanguage, VoiceItem } from "@/models/types";
 
 export function useVoiceController() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -56,18 +56,93 @@ export function useVoiceController() {
   const [isSubmittingDesign, setIsSubmittingDesign] = useState<boolean>(false);
   const [designErrors, setDesignErrors] = useState<Record<string, string>>({});
 
+  // Design Audition Preview State (Generate / Regenerate before saving)
+  const [systemLanguages, setSystemLanguages] = useState<SystemLanguage[]>([]);
+  const [designPreviewText, setDesignPreviewTextState] = useState<string>("");
+  const [designPreviewAudioUrl, setDesignPreviewAudioUrl] = useState<string | null>(null);
+  const [designPreviewBase64, setDesignPreviewBase64] = useState<string | null>(null);
+  const [designPreviewDuration, setDesignPreviewDuration] = useState<number>(0);
+  const [designResolvedInstruction, setDesignResolvedInstruction] = useState<string>("");
+  const [isGeneratingDesignPreview, setIsGeneratingDesignPreview] = useState<boolean>(false);
+  const [isPlayingDesignPreview, setIsPlayingDesignPreview] = useState<boolean>(false);
+  const [designPreviewAudioEl, setDesignPreviewAudioEl] = useState<HTMLAudioElement | null>(null);
+
   // Preview Audio
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
   const [previewAudio, setPreviewAudio] = useState<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     loadVoices();
+    loadSystemLanguages();
     return () => {
       if (previewAudio) {
         previewAudio.pause();
       }
+      if (designPreviewAudioEl) {
+        designPreviewAudioEl.pause();
+      }
     };
   }, []);
+
+  const loadSystemLanguages = async () => {
+    try {
+      const langs = await apiClient.getLanguages();
+      setSystemLanguages(langs);
+      const kmDefault = langs.find((l) => l.code.toLowerCase() === "km-kh") || langs[0];
+      if (kmDefault?.default_preview_text) {
+        setDesignPreviewTextState((prev) => (prev ? prev : kmDefault.default_preview_text || ""));
+      }
+    } catch {
+      // Ignored if API unavailable
+    }
+  };
+
+  const getDefaultPreviewForLanguage = (langCode: string): string => {
+    const matched = systemLanguages.find((l) => l.code.toLowerCase() === langCode.toLowerCase());
+    if (matched?.default_preview_text) {
+      return matched.default_preview_text;
+    }
+    return systemLanguages[0]?.default_preview_text || "";
+  };
+
+  const invalidateDesignPreview = () => {
+    if (designPreviewAudioEl) {
+      designPreviewAudioEl.pause();
+      setIsPlayingDesignPreview(false);
+    }
+    if (designPreviewAudioUrl) {
+      URL.revokeObjectURL(designPreviewAudioUrl);
+    }
+    setDesignPreviewAudioUrl(null);
+    setDesignPreviewBase64(null);
+    setDesignPreviewDuration(0);
+    setDesignResolvedInstruction("");
+  };
+
+  const setDesignPreviewText = (val: string) => {
+    setDesignPreviewTextState(val);
+    invalidateDesignPreview();
+  };
+
+  const setDesignDescriptionValidated = (val: string) => {
+    setDesignDescription(val);
+    invalidateDesignPreview();
+  };
+
+  const setDesignGenderValidated = (val: string) => {
+    setDesignGender(val);
+    invalidateDesignPreview();
+  };
+
+  const setDesignPitchValidated = (val: number) => {
+    setDesignPitch(val);
+    invalidateDesignPreview();
+  };
+
+  const setDesignSpeedValidated = (val: number) => {
+    setDesignSpeed(val);
+    invalidateDesignPreview();
+  };
 
   // Synchronize modal state and language filter with URL search parameters
   const actionParam = searchParams.get("action");
@@ -125,6 +200,7 @@ export function useVoiceController() {
   const closeModal = () => {
     setActiveModal(null);
     setEditingVoice(null);
+    invalidateDesignPreview();
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       next.delete("action");
@@ -227,6 +303,91 @@ export function useVoiceController() {
     }
   };
 
+  const generateDesignPreview = async () => {
+    const errors: Record<string, string> = {};
+    if (designDescription.trim().length > 2000) {
+      errors.description = "Description cannot exceed 2,000 characters.";
+    }
+    if (designPitch < 0.5 || designPitch > 2.0) {
+      errors.pitch = "Pitch modifier must be between 0.5x and 2.0x.";
+    }
+    if (designSpeed < 0.5 || designSpeed > 2.0) {
+      errors.speed = "Pace modifier must be between 0.5x and 2.0x.";
+    }
+    if (!designDescription.trim() && !designBaseId.trim()) {
+      errors.description = "Please describe the voice personality before generating a preview.";
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setDesignErrors(errors);
+      return false;
+    }
+
+    setIsGeneratingDesignPreview(true);
+    setDesignErrors({});
+    invalidateDesignPreview();
+
+    try {
+      const targetText = designPreviewText.trim() || getDefaultPreviewForLanguage("km-KH");
+      const res = await apiClient.previewDesignVoice({
+        description: designDescription.trim(),
+        gender: designGender,
+        pitch: designPitch,
+        speed: designSpeed,
+        base_voice_id: designBaseId.trim() || undefined,
+        emotion: designEmotion.trim() || undefined,
+        style: designStyle.trim() || undefined,
+        preview_text: targetText || undefined,
+      });
+
+      const binary = atob(res.audio_base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      const blob = new Blob([bytes], { type: res.content_type || "audio/wav" });
+      const blobUrl = URL.createObjectURL(blob);
+
+      setDesignPreviewBase64(res.audio_base64);
+      setDesignPreviewAudioUrl(blobUrl);
+      setDesignPreviewDuration(res.duration_seconds || 0);
+      setDesignResolvedInstruction(res.control_instruction || "");
+
+      // Auto-play newly generated audition sample
+      const audio = new Audio(blobUrl);
+      audio.onended = () => setIsPlayingDesignPreview(false);
+      audio.onerror = () => setIsPlayingDesignPreview(false);
+      setDesignPreviewAudioEl(audio);
+      audio.play().then(() => setIsPlayingDesignPreview(true)).catch(() => setIsPlayingDesignPreview(false));
+
+      return true;
+    } catch (err: unknown) {
+      if (err instanceof ApiError) {
+        setDesignErrors(err.fieldErrors || { general: err.message });
+      } else {
+        setDesignErrors({ general: "Could not generate preview. Please try again." });
+      }
+      return false;
+    } finally {
+      setIsGeneratingDesignPreview(false);
+    }
+  };
+
+  const togglePlayDesignPreview = () => {
+    if (!designPreviewAudioUrl) return;
+    if (isPlayingDesignPreview && designPreviewAudioEl) {
+      designPreviewAudioEl.pause();
+      setIsPlayingDesignPreview(false);
+      return;
+    }
+    const audio = designPreviewAudioEl || new Audio(designPreviewAudioUrl);
+    audio.src = designPreviewAudioUrl;
+    audio.onended = () => setIsPlayingDesignPreview(false);
+    audio.onerror = () => setIsPlayingDesignPreview(false);
+    setDesignPreviewAudioEl(audio);
+    audio.play().then(() => setIsPlayingDesignPreview(true)).catch(() => setIsPlayingDesignPreview(false));
+  };
+
   const submitDesign = async () => {
     const errors: Record<string, string> = {};
     const trimmedName = designName.trim();
@@ -268,8 +429,11 @@ export function useVoiceController() {
         base_voice_id: designBaseId.trim() || undefined,
         emotion: designEmotion.trim() || undefined,
         style: designStyle.trim() || undefined,
+        preview_text: designPreviewText.trim() || undefined,
+        preview_audio_base64: designPreviewBase64 || undefined,
       });
 
+      invalidateDesignPreview();
       closeModal();
       setDesignName("");
       setDesignDescription("");
@@ -411,13 +575,13 @@ export function useVoiceController() {
     designName,
     setDesignName,
     designDescription,
-    setDesignDescription,
+    setDesignDescription: setDesignDescriptionValidated,
     designGender,
-    setDesignGender,
+    setDesignGender: setDesignGenderValidated,
     designPitch,
-    setDesignPitch,
+    setDesignPitch: setDesignPitchValidated,
     designSpeed,
-    setDesignSpeed,
+    setDesignSpeed: setDesignSpeedValidated,
     designBaseId,
     setDesignBaseId,
     designEmotion,
@@ -429,6 +593,17 @@ export function useVoiceController() {
     isSubmittingDesign,
     designErrors,
     submitDesign,
+    // Design Audition Preview
+    designPreviewText,
+    setDesignPreviewText,
+    designPreviewAudioUrl,
+    designPreviewDuration,
+    designResolvedInstruction,
+    isGeneratingDesignPreview,
+    isPlayingDesignPreview,
+    generateDesignPreview,
+    togglePlayDesignPreview,
+    getDefaultPreviewForLanguage,
     // Edit
     editingVoice,
     editName,

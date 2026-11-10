@@ -42,8 +42,13 @@ print(f"Loading VoxCPM 2 model on device: {device}...")
 if device == "cuda":
     print(f"GPU: {torch.cuda.get_device_name(0)}")
 
-model = VoxCPM.from_pretrained("openbmb/VoxCPM2", load_denoiser=False)
-sample_rate = getattr(getattr(model, "tts_model", None), "sample_rate", 24000)
+model_id = os.environ.get("VOXCPM_MODEL_ID", "ravuthz/VoxCPM2-khmer")
+model = VoxCPM.from_pretrained(model_id, load_denoiser=False)
+sample_rate = getattr(
+    getattr(model, "tts_model", None),
+    "sample_rate",
+    int(os.environ.get("AUDIO_SAMPLE_RATE_HZ", "48000")),
+)
 print(f"VoxCPM 2 model loaded successfully! Native sample rate: {sample_rate}Hz")
 
 

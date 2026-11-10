@@ -6,6 +6,7 @@
 import type {
   ApiKeyCreated,
   ApiKeyItem,
+  DesignPreviewResponse,
   JobItem,
   SystemAudioFormat,
   SystemLanguage,
@@ -166,6 +167,25 @@ class VocaraApiClient {
     return this.handleResponse<VoiceItem>(res);
   }
 
+  async previewDesignVoice(payload: {
+    description?: string;
+    base_voice_id?: string;
+    gender?: string;
+    pitch?: number;
+    speed?: number;
+    emotion?: string;
+    style?: string;
+    preview_text?: string;
+    extra_modifiers?: Record<string, unknown>;
+  }): Promise<DesignPreviewResponse> {
+    const res = await fetch(`${BASE_URL}/voices/design/preview`, {
+      method: "POST",
+      headers: this.getHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(payload),
+    });
+    return this.handleResponse<DesignPreviewResponse>(res);
+  }
+
   async designVoice(payload: {
     name: string;
     description?: string;
@@ -175,6 +195,8 @@ class VocaraApiClient {
     speed?: number;
     emotion?: string;
     style?: string;
+    preview_text?: string;
+    preview_audio_base64?: string;
     extra_modifiers?: Record<string, unknown>;
   }): Promise<VoiceItem> {
     const res = await fetch(`${BASE_URL}/voices/design`, {

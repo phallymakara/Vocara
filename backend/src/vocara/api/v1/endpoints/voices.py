@@ -4,6 +4,8 @@ from fastapi import APIRouter, File, Form, Query, Request, Response, UploadFile,
 
 from vocara.api.deps import CurrentApiKey, OptionalApiKey, VoiceServiceDep
 from vocara.api.v1.schemas.voice import (
+    DesignPreviewRequest,
+    DesignPreviewResponse,
     DesignVoiceRequest,
     UpdateVoiceRequest,
     VoiceResponse,
@@ -121,8 +123,9 @@ async def get_voice_preview(
 ) -> Response:
     """Stream audio sample preview for the specified voice."""
     owner_id = current_key.owner_id if current_key else ""
-    if not owner_id and getattr(request.app.state.settings, "ENVIRONMENT", "") == "development":
-        owner_id = "default_developer"
+    settings = request.app.state.settings
+    if not owner_id and getattr(settings, "ENVIRONMENT", "") == "development":
+        owner_id = getattr(settings, "DEFAULT_DEV_OWNER_ID", "")
 
     audio_bytes, content_type = await voice_service.get_preview_stream(
         voice_id=voice_id, owner_id=owner_id
@@ -188,6 +191,33 @@ async def clone_voice(
 
 
 @router.post(
+    "/design/preview",
+    response_model=DesignPreviewResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Preview Designed Voice",
+)
+async def preview_designed_voice(
+    payload: DesignPreviewRequest,
+    current_key: CurrentApiKey,
+    voice_service: VoiceServiceDep,
+) -> DesignPreviewResponse:
+    """Synthesize a VoxCPM 2 audition preview for a voice design before saving."""
+    preview = await voice_service.preview_designed_voice(
+        owner_id=current_key.owner_id,
+        base_voice_id=payload.base_voice_id,
+        gender=payload.gender,
+        pitch=payload.pitch,
+        speed=payload.speed,
+        emotion=payload.emotion,
+        style=payload.style,
+        description=payload.description,
+        preview_text=payload.preview_text,
+        extra_modifiers=payload.extra_modifiers,
+    )
+    return DesignPreviewResponse(**preview)
+
+
+@router.post(
     "/design",
     response_model=VoiceResponse,
     status_code=status.HTTP_201_CREATED,
@@ -198,7 +228,7 @@ async def design_voice(
     current_key: CurrentApiKey,
     voice_service: VoiceServiceDep,
 ) -> VoiceResponse:
-    """Create a derivative voice profile variation from an existing base voice."""
+    """Create a derivative voice profile variation from an existing base voice or description."""
     designed = await voice_service.design_voice(
         owner_id=current_key.owner_id,
         name=payload.name,
@@ -211,5 +241,7 @@ async def design_voice(
         description=payload.description,
         visibility=payload.visibility,
         extra_modifiers=payload.extra_modifiers,
+        preview_text=payload.preview_text,
+        preview_audio_base64=payload.preview_audio_base64,
     )
     return _to_voice_response(designed)

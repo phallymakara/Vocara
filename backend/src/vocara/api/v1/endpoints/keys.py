@@ -1,6 +1,6 @@
 """API endpoints for API Key lifecycle management."""
 
-from fastapi import APIRouter, Header, status
+from fastapi import APIRouter, Header, Request, status
 
 from vocara.api.deps import AuthServiceDep, CurrentApiKey, OptionalApiKey
 from vocara.api.v1.schemas.keys import (
@@ -20,6 +20,7 @@ router = APIRouter(prefix="/keys", tags=["Account & Keys"])
 )
 async def create_api_key(
     payload: CreateApiKeyRequest,
+    request: Request,
     auth_service: AuthServiceDep,
     current_key: OptionalApiKey = None,
     x_owner_id: str | None = Header(default=None, alias="X-Owner-ID"),
@@ -28,8 +29,9 @@ async def create_api_key(
 
     The raw `api_key` secret is returned only once in this response and cannot be retrieved again.
     """
+    default_owner = getattr(request.app.state.settings, "DEFAULT_DEV_OWNER_ID", "default_developer")
     # Derive owner from current key if authenticated, or initial onboarding header
-    owner_id = current_key.owner_id if current_key else (x_owner_id or "default_developer")
+    owner_id = current_key.owner_id if current_key else (x_owner_id or default_owner)
 
     raw_key, key_entity = await auth_service.create_api_key(
         owner_id=owner_id,

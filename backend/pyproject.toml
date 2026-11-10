@@ -23,7 +23,6 @@ dependencies = [
     "soundfile>=0.12.1",
     "numpy>=1.26.0",
     "mcp>=1.0.0",
-    "edge-tts>=7.0.0",
     "aiosqlite>=0.20.0",
     "azure-storage-blob>=12.20.0",
 ]

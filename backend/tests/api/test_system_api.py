@@ -17,6 +17,7 @@ async def test_system_languages_endpoint(async_client: AsyncClient) -> None:
     assert km_lang is not None
     assert km_lang["name"] == "Khmer"
     assert km_lang["is_default"] is True
+    assert len(km_lang["default_preview_text"]) > 0
 
 
 @pytest.mark.asyncio
@@ -32,3 +33,4 @@ async def test_system_formats_endpoint(async_client: AsyncClient) -> None:
     assert "wav" in format_names
     assert "flac" in format_names
     assert "ogg" in format_names
+    assert formats[0]["sample_rate_hz"] == 48000

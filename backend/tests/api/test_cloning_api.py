@@ -79,7 +79,28 @@ async def test_cloning_and_design_api_flow(async_client: AsyncClient) -> None:
     assert preview_resp.headers["content-type"].startswith("audio/")
     assert len(preview_resp.content) > 0
 
-    # 6. Test design derivative variation based on cloned voice
+    # 6. Test preview design endpoint before saving (audition)
+    design_preview_resp = await async_client.post(
+        "/api/v1/voices/design/preview",
+        json={
+            "base_voice_id": cloned_voice_id,
+            "gender": "male",
+            "pitch": 1.2,
+            "speed": 1.05,
+            "emotion": "excited",
+            "style": "conversational",
+            "description": "Upbeat conversational speaker",
+            "preview_text": "សួស្តី នេះ ជា ការ សាកល្បង។",
+        },
+        headers=headers,
+    )
+    assert design_preview_resp.status_code == 200
+    preview_payload = design_preview_resp.json()
+    assert len(preview_payload["audio_base64"]) > 0
+    assert preview_payload["content_type"] == "audio/wav"
+    assert preview_payload["preview_text"] == "សួស្តី នេះ ជា ការ សាកល្បង។"
+
+    # 7. Test design derivative variation saving audited preview directly
     design_resp = await async_client.post(
         "/api/v1/voices/design",
         json={
@@ -90,6 +111,8 @@ async def test_cloning_and_design_api_flow(async_client: AsyncClient) -> None:
             "emotion": "excited",
             "style": "conversational",
             "description": "Upbeat high-pitch variation of Dara",
+            "preview_text": preview_payload["preview_text"],
+            "preview_audio_base64": preview_payload["audio_base64"],
         },
         headers=headers,
     )

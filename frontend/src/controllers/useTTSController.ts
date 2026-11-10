@@ -1,16 +1,15 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { apiClient, ApiError } from "@/controllers/apiClient";
-import type { VoiceItem, JobItem } from "@/models/types";
-
-export const DEFAULT_SYNTHESIS_TEXT = "សូមស្វាគមន៍មកកាន់ប្រព័ន្ធបម្លែងអក្សរទៅជាសម្លេង";
+import type { VoiceItem, JobItem, SystemLanguage } from "@/models/types";
 
 export function useTTSController() {
   const [searchParams, setSearchParams] = useSearchParams();
   const voiceParam = searchParams.get("voice");
 
-  const [text, setText] = useState<string>(DEFAULT_SYNTHESIS_TEXT);
+  const [text, setText] = useState<string>("");
   const [voices, setVoices] = useState<VoiceItem[]>([]);
+  const [languages, setLanguages] = useState<SystemLanguage[]>([]);
   const [selectedVoiceId, setSelectedVoiceIdState] = useState<string>(voiceParam || "");
   const [language, setLanguage] = useState<string>("km-KH");
   const [speed, setSpeed] = useState<number>(1.0);
@@ -55,7 +54,30 @@ export function useTTSController() {
 
   useEffect(() => {
     loadVoices();
+    loadLanguages();
   }, []);
+
+  const loadLanguages = async () => {
+    try {
+      const langs = await apiClient.getLanguages();
+      setLanguages(langs);
+      const matched = langs.find((l) => l.code.toLowerCase() === language.toLowerCase()) || langs[0];
+      if (matched?.default_preview_text) {
+        setText((prev) => (prev ? prev : matched.default_preview_text || ""));
+      }
+    } catch {
+      // Ignored if unauthenticated
+    }
+  };
+
+  useEffect(() => {
+    if (languages.length > 0 && !text) {
+      const matched = languages.find((l) => l.code.toLowerCase() === language.toLowerCase());
+      if (matched?.default_preview_text) {
+        setText(matched.default_preview_text);
+      }
+    }
+  }, [language, languages]);
 
   const loadVoices = async () => {
     try {

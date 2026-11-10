@@ -26,7 +26,6 @@ from vocara.infrastructure.db.repositories.webhook_repo import SqlWebhookReposit
 from vocara.infrastructure.inference.fake_engine import FakeInferenceEngine
 from vocara.infrastructure.inference.huggingface_engine import HuggingFaceInferenceEngine
 from vocara.infrastructure.inference.modal_engine import ModalInferenceEngine
-from vocara.infrastructure.inference.neural_engine import NeuralTtsEngine
 from vocara.infrastructure.queue.redis_queue import RedisJobQueue
 from vocara.infrastructure.storage.azure import AzureBlobStorageAdapter
 from vocara.infrastructure.storage.local import LocalStorageAdapter
@@ -68,48 +67,45 @@ class Container:
             from vocara.infrastructure.db.repositories.voice_repo import SqlVoiceRepository
 
             voice_repo = SqlVoiceRepository(session)
-            default_voices = [
-                Voice(
-                    id="voice-sophea-built-in",
-                    name="Sophea (Default Female)",
-                    voice_type=VoiceType.BUILT_IN,
-                    owner_id=None,
-                    language="km-KH",
-                    visibility=VoiceVisibility.PUBLIC,
-                    description="Clear, expressive female voice optimized for narration.",
-                    reference_audio_key="voices/voice-sophea-built-in/preview.wav",
-                    preview_audio_key="voices/voice-sophea-built-in/preview.wav",
-                    modifiers={"gender": "female"},
-                ),
-                Voice(
-                    id="voice-dara-built-in",
-                    name="Dara (Default Male)",
-                    voice_type=VoiceType.BUILT_IN,
-                    owner_id=None,
-                    language="km-KH",
-                    visibility=VoiceVisibility.PUBLIC,
-                    description="Authoritative, warm male voice ideal for storytelling.",
-                    reference_audio_key="voices/d51a6ac7-6059-4adf-a93a-55ffacffea2d/reference.wav",
-                    preview_audio_key="voices/d51a6ac7-6059-4adf-a93a-55ffacffea2d/preview.wav",
-                    modifiers={"gender": "male"},
-                ),
-                Voice(
-                    id="voice-alex-built-in",
-                    name="Alex (English Natural)",
-                    voice_type=VoiceType.BUILT_IN,
-                    owner_id=None,
-                    language="en-US",
-                    visibility=VoiceVisibility.PUBLIC,
-                    description="Natural, balanced English voice for general purposes.",
-                    reference_audio_key=None,
-                    preview_audio_key=None,
-                    modifiers={"gender": "neutral"},
-                ),
-            ]
-            for v in default_voices:
-                existing = await voice_repo.get_by_id(v.id)
+            seed_items = self.settings.DEFAULT_SEED_VOICES
+            for item in seed_items:
+                voice_id = str(item.get("id", "")).strip()
+                if not voice_id:
+                    continue
+                seed_modifiers = dict(item.get("modifiers") or {})
+                existing = await voice_repo.get_by_id(voice_id)
                 if not existing:
-                    await voice_repo.create(v)
+                    await voice_repo.create(
+                        Voice(
+                            id=voice_id,
+                            name=str(item.get("name", voice_id)),
+                            voice_type=VoiceType.BUILT_IN,
+                            owner_id=None,
+                            language=str(item.get("language", "km-KH")),
+                            visibility=VoiceVisibility.PUBLIC,
+                            description=str(item.get("description", "")),
+                            reference_audio_key=item.get("reference_audio_key"),
+                            preview_audio_key=item.get("preview_audio_key"),
+                            modifiers=seed_modifiers,
+                        )
+                    )
+                else:
+                    # Clean legacy non-built-in reference keys or missing control_instruction on built-ins
+                    needs_update = False
+                    expected_prefix = f"voices/{voice_id}/"
+                    if (
+                        existing.voice_type == VoiceType.BUILT_IN
+                        and existing.reference_audio_key
+                        and not existing.reference_audio_key.startswith(expected_prefix)
+                    ):
+                        existing.reference_audio_key = item.get("reference_audio_key")
+                        existing.preview_audio_key = item.get("preview_audio_key")
+                        needs_update = True
+                    if seed_modifiers and "control_instruction" not in (existing.modifiers or {}):
+                        existing.modifiers = {**(existing.modifiers or {}), **seed_modifiers}
+                        needs_update = True
+                    if needs_update:
+                        await voice_repo.update(existing)
             await session.commit()
 
         # Storage initialization
@@ -124,19 +120,27 @@ class Container:
         # Queue initialization
         self.job_queue = RedisJobQueue(self.settings.REDIS_URL)
 
-        # Inference engine initialization
-        fake_fallback = FakeInferenceEngine(storage=self.storage)
-        neural_engine = NeuralTtsEngine(storage=self.storage)
+        # Inference engine initialization (no edge_tts fallback)
+        fake_fallback = FakeInferenceEngine(
+            sample_rate=self.settings.AUDIO_SAMPLE_RATE_HZ,
+            storage=self.storage,
+        )
 
         if self.settings.INFERENCE_ENGINE_TYPE == "fake":
             self.inference_engine = fake_fallback
-        elif self.settings.INFERENCE_ENGINE_TYPE == "modal" and self.settings.MODAL_API_ENDPOINT:
+        elif self.settings.INFERENCE_ENGINE_TYPE == "modal":
+            if not self.settings.MODAL_API_ENDPOINT:
+                raise ValueError("MODAL_API_ENDPOINT must be configured when INFERENCE_ENGINE_TYPE=modal.")
             self.inference_engine = ModalInferenceEngine(
                 endpoint_url=self.settings.MODAL_API_ENDPOINT,
                 api_token=self.settings.MODAL_API_TOKEN,
                 timeout_seconds=self.settings.INFERENCE_TIMEOUT_SECONDS,
                 storage=self.storage,
-                fallback_engine=neural_engine,
+                inference_timesteps=self.settings.VOXCPM_INFERENCE_TIMESTEPS,
+                cfg_value=self.settings.VOXCPM_CFG_VALUE,
+                max_chunk_chars=self.settings.VOXCPM_MAX_CHUNK_CHARS,
+                default_km_preview=self.settings.DEFAULT_PREVIEW_TEXT_KM,
+                default_en_preview=self.settings.DEFAULT_PREVIEW_TEXT_EN,
             )
         elif self.settings.INFERENCE_ENGINE_TYPE == "huggingface":
             self.inference_engine = HuggingFaceInferenceEngine(
@@ -145,10 +149,9 @@ class Container:
                 model_id=self.settings.HUGGINGFACE_MODEL_ID,
                 timeout_seconds=self.settings.INFERENCE_TIMEOUT_SECONDS,
                 storage=self.storage,
-                fallback_engine=neural_engine,
             )
         else:
-            self.inference_engine = neural_engine
+            self.inference_engine = fake_fallback
 
     async def shutdown(self) -> None:
         """Gracefully release connections and background tasks."""
@@ -187,8 +190,17 @@ class Container:
 
     def get_voice_service(self, session: AsyncSession) -> VoiceService:
         """Return VoiceService wired with VoiceRepository, BlobStorage, and InferenceEngine."""
-        inference = self.inference_engine or FakeInferenceEngine()
-        return VoiceService(self.get_voice_repo(session), self.storage, inference)
+        inference = self.inference_engine or FakeInferenceEngine(
+            sample_rate=self.settings.AUDIO_SAMPLE_RATE_HZ
+        )
+        return VoiceService(
+            self.get_voice_repo(session),
+            self.storage,
+            inference,
+            sample_rate=self.settings.AUDIO_SAMPLE_RATE_HZ,
+            default_km_preview=self.settings.DEFAULT_PREVIEW_TEXT_KM,
+            default_en_preview=self.settings.DEFAULT_PREVIEW_TEXT_EN,
+        )
 
     def get_job_service(self, session: AsyncSession) -> JobService:
         """Return JobService wired with JobRepository, JobQueue, and BlobStorage."""
