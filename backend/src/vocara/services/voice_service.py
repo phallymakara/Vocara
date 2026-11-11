@@ -339,41 +339,9 @@ class VoiceService:
         base_voice_id: str | None,
         target_gender: str,
     ) -> Voice:
-        """Resolve parent voice dynamically without hardcoding system IDs."""
+        """Use explicit base_voice_id if chosen, otherwise return an unreferenced prompt-design voice."""
         if base_voice_id:
             return await self.get_voice_by_id(base_voice_id, owner_id)
-
-        accessible = await self.voice_repo.list_accessible_voices(owner_id=owner_id)
-        # Prioritize built-in native Khmer voices with reference audio as the primary vocal foundation
-        built_in_with_ref = [
-            v
-            for v in accessible
-            if v.voice_type == VoiceType.BUILT_IN
-            and (v.reference_audio_key or v.preview_audio_key)
-            and str((v.modifiers or {}).get("gender", "")).lower() == target_gender
-        ]
-        if built_in_with_ref:
-            return built_in_with_ref[0]
-
-        built_in_matching = [
-            v
-            for v in accessible
-            if v.voice_type == VoiceType.BUILT_IN
-            and str((v.modifiers or {}).get("gender", "")).lower() == target_gender
-        ]
-        if built_in_matching:
-            return built_in_matching[0]
-
-        any_matching = [
-            v
-            for v in accessible
-            if str((v.modifiers or {}).get("gender", "")).lower() == target_gender
-        ]
-        if any_matching:
-            return any_matching[0]
-
-        if accessible:
-            return accessible[0]
 
         return Voice(
             id="virtual-design-base",

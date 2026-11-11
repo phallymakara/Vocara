@@ -245,12 +245,14 @@ class VocaraApiClient {
   }
 
   async synthesizeSpeech(
-    payload: TtsRequestPayload
+    payload: TtsRequestPayload,
+    signal?: AbortSignal
   ): Promise<{ type: "stream"; audioBlob: Blob; duration: number } | { type: "job"; job: JobItem }> {
     const res = await fetch(`${BASE_URL}/tts`, {
       method: "POST",
       headers: this.getHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(payload),
+      signal,
     });
 
     if (res.status === 200) {
@@ -268,16 +270,18 @@ class VocaraApiClient {
     return this.handleResponse(res);
   }
 
-  async getJob(id: string): Promise<JobItem> {
+  async getJob(id: string, signal?: AbortSignal): Promise<JobItem> {
     const res = await fetch(`${BASE_URL}/jobs/${id}`, {
       headers: this.getHeaders(),
+      signal,
     });
     return this.handleResponse<JobItem>(res);
   }
 
-  async getJobResultBlob(id: string): Promise<Blob> {
+  async getJobResultBlob(id: string, signal?: AbortSignal): Promise<Blob> {
     const res = await fetch(`${BASE_URL}/jobs/${id}/result`, {
       headers: this.getHeaders(),
+      signal,
     });
     if (!res.ok) {
       await this.handleResponse(res);

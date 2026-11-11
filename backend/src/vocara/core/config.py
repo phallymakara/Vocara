@@ -111,6 +111,7 @@ class Settings(BaseSettings):
     VOXCPM_LORA_ID: str = ""
     VOXCPM_INFERENCE_TIMESTEPS: int = 20
     VOXCPM_CFG_VALUE: float = 2.0
+    VOXCPM_DESIGN_CFG_VALUE: float = 1.75
     VOXCPM_MAX_CHUNK_CHARS: int = 450
     AUDIO_SAMPLE_RATE_HZ: int = 48000
     DEFAULT_PREVIEW_TEXT_KM: str = "សួស្តី ខ្ញុំជាវូការា ជាអេអាយបម្លែងអក្សរទៅជាសម្លេង។"

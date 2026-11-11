@@ -32,7 +32,8 @@ class ModalInferenceEngine(BaseInferenceEngine):
         storage: BlobStorage | None = None,
         inference_timesteps: int = 20,
         cfg_value: float = 2.0,
-        max_chunk_chars: int = 180,
+        design_cfg_value: float | None = None,
+        max_chunk_chars: int = 450,
         default_km_preview: str | None = None,
         default_en_preview: str | None = None,
     ) -> None:
@@ -43,6 +44,7 @@ class ModalInferenceEngine(BaseInferenceEngine):
         self.storage = storage
         self.inference_timesteps = inference_timesteps
         self.cfg_value = cfg_value
+        self.design_cfg_value = design_cfg_value if design_cfg_value is not None else min(cfg_value, 1.75)
         self.max_chunk_chars = max_chunk_chars
         self.default_km_preview = default_km_preview
         self.default_en_preview = default_en_preview
@@ -72,18 +74,20 @@ class ModalInferenceEngine(BaseInferenceEngine):
             return re.sub(r"\s+", " ", ascii_explicit)[:140].strip()
 
         cues: list[str] = []
-        gender = str(mods.get("gender") or "").strip().lower()
-        if gender == "female":
-            cues.append("woman")
-        elif gender == "male":
-            cues.append("man")
-
         raw_desc = str(mods.get("description") or description or "").strip()
-        if raw_desc:
-            first_clause = re.split(r"[\n.!?។]+", raw_desc)[0].strip()
-            ascii_clause = re.sub(r"[^\x20-\x7E]+", " ", first_clause).strip()
-            if ascii_clause:
-                cues.append(ascii_clause[:90].strip())
+        first_clause = re.split(r"[\n.!?។]+", raw_desc)[0].strip() if raw_desc else ""
+        ascii_clause = re.sub(r"[^\x20-\x7E]+", " ", first_clause).strip() if first_clause else ""
+
+        gender = str(mods.get("gender") or "").strip().lower()
+        has_gender_word = bool(re.search(r"\b(woman|women|female|girl|lady|man|men|male|boy|gentleman)\b", ascii_clause, re.I))
+        if not has_gender_word:
+            if gender == "female":
+                cues.append("woman")
+            elif gender == "male":
+                cues.append("man")
+
+        if ascii_clause:
+            cues.append(ascii_clause[:120].strip())
 
         emotion = str(mods.get("emotion") or "").strip()
         if emotion:
@@ -340,9 +344,20 @@ class ModalInferenceEngine(BaseInferenceEngine):
 
         target_script = self._resolve_preview_script(base_voice.language, preview_text)
         instruction = self.distill_voice_instruction(modifiers, modifiers.get("description") or base_voice.description)
+        if (
+            (base_voice.language or "").lower().startswith("km")
+            and instruction
+            and "cambodian" not in instruction.lower()
+            and "khmer" not in instruction.lower()
+        ):
+            instruction = f"{instruction}, native Cambodian speaker"[:140].strip()
 
-        # Anchor Khmer voice design to the selected Khmer base voice sample so accent stays native Cambodian
-        base_ref_key = base_voice.reference_audio_key or base_voice.preview_audio_key
+        # Only anchor to a reference WAV when the caller explicitly selected a Base Speaker Profile
+        base_ref_key = (
+            base_voice.reference_audio_key or base_voice.preview_audio_key
+            if base_voice.id != "virtual-design-base"
+            else None
+        )
         ref_audio_b64: str | None = None
         if self.storage and base_ref_key:
             try:
@@ -360,7 +375,8 @@ class ModalInferenceEngine(BaseInferenceEngine):
                 "control_instruction": instruction or None,
                 "preview_text": target_script,
                 "inference_timesteps": self.inference_timesteps,
-                "cfg_value": self.cfg_value,
+                "cfg_value": self.design_cfg_value,
+                "max_chunk_chars": self.max_chunk_chars,
             }
             if ref_audio_b64:
                 payload["reference_audio_base64"] = ref_audio_b64

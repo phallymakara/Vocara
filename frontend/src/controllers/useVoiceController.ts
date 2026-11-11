@@ -69,6 +69,7 @@ export function useVoiceController() {
 
   // Preview Audio
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
+  const [downloadingVoiceId, setDownloadingVoiceId] = useState<string | null>(null);
   const [previewAudio, setPreviewAudio] = useState<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -536,6 +537,33 @@ export function useVoiceController() {
     }
   };
 
+  const downloadVoicePreview = async (voice: VoiceItem) => {
+    setDownloadingVoiceId(voice.id);
+    try {
+      const url = apiClient.getVoicePreviewUrl(voice.id);
+      const res = await fetch(url);
+      if (!res.ok) {
+        throw new Error(`Failed to download preview (${res.status})`);
+      }
+      const contentType = res.headers.get("content-type") || "audio/wav";
+      const ext = contentType.includes("mpeg") ? "mp3" : "wav";
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const safeName = (voice.name || voice.id).trim().replace(/[^a-zA-Z0-9_-]+/g, "_") || "voice_sample";
+      link.href = blobUrl;
+      link.download = `${safeName}.${ext}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+    } catch (err: unknown) {
+      console.error("Failed to download voice preview:", err);
+    } finally {
+      setDownloadingVoiceId(null);
+    }
+  };
+
   const filteredVoices = voices.filter((v) => {
     if (filterLang === "all") return true;
     return v.language.toLowerCase().includes(filterLang.toLowerCase());
@@ -627,6 +655,8 @@ export function useVoiceController() {
     submitDelete,
     // Audio
     playingVoiceId,
+    downloadingVoiceId,
     togglePreview,
+    downloadVoicePreview,
   };
 }

@@ -138,6 +138,7 @@ class Container:
                 storage=self.storage,
                 inference_timesteps=self.settings.VOXCPM_INFERENCE_TIMESTEPS,
                 cfg_value=self.settings.VOXCPM_CFG_VALUE,
+                design_cfg_value=self.settings.VOXCPM_DESIGN_CFG_VALUE,
                 max_chunk_chars=self.settings.VOXCPM_MAX_CHUNK_CHARS,
                 default_km_preview=self.settings.DEFAULT_PREVIEW_TEXT_KM,
                 default_en_preview=self.settings.DEFAULT_PREVIEW_TEXT_EN,

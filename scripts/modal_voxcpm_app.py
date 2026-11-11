@@ -134,12 +134,17 @@ class VoxCPMService:
 
     @staticmethod
     def _segment_khmer_text(text: str) -> str:
-        """Insert natural Khmer word boundaries using khmer-nltk without altering English or punctuation."""
+        """Apply optional Khmer word segmentation when VOXCPM_KHMER_WORD_SPACING=true.
+
+        By default VoxCPM 2 receives natural unsegmented Khmer phrasing so words flow smoothly
+        without artificial staccato pauses between every word.
+        """
         import re
 
         if not text:
             return ""
-        # Separate Khmer runs from non-Khmer segments cleanly
+        if os.environ.get("VOXCPM_KHMER_WORD_SPACING", "false").lower() != "true":
+            return text.strip()
         khmer_run_re = re.compile(r"([\u1780-\u17FF]+)")
         if not khmer_run_re.search(text):
             return text
@@ -640,7 +645,8 @@ class VoxCPMService:
 
         modifiers = req.get("modifiers") or {}
         timesteps = int(req.get("inference_timesteps") or 20)
-        cfg_val = float(req.get("cfg_value") or 2.0)
+        cfg_val = float(req.get("cfg_value") or 1.75)
+        max_chunk_chars = int(req.get("max_chunk_chars") or 450)
         ref_b64 = req.get("reference_audio_base64") or req.get("prompt_audio_base64")
         voice_id = req.get("base_voice_id") or req.get("voice_id")
 
@@ -659,11 +665,13 @@ class VoxCPMService:
             modifiers=modifiers,
         )
         segmented_body = self._normalize_speech_text(self._segment_khmer_text(spoken_body))
-        chunks = self._split_into_speech_chunks(segmented_body, max_chunk_chars=180)
+        chunks = self._split_into_speech_chunks(segmented_body, max_chunk_chars=max_chunk_chars)
         if not chunks:
             chunks = [segmented_body]
 
-        seed = self._resolve_speaker_seed(instruction or cache_key)
+        import random
+
+        seed = int(req.get("seed") or random.randint(1, 999999))
         raw_audio_chunks = []
         with torch.inference_mode():
             prompt_cache = self._get_or_build_prompt_cache(ref_path, cache_key=cache_key)
@@ -732,6 +740,7 @@ class VoxCPMService:
             generate_preview: bool | None = False
             inference_timesteps: int | None = None
             cfg_value: float | None = None
+            max_chunk_chars: int | None = None
 
         class SynthesizeRequest(BaseModel):
             inputs: str | None = None
@@ -752,6 +761,7 @@ class VoxCPMService:
             inference_timesteps: int | None = None
             cfg_value: float | None = None
             max_chunk_chars: int | None = None
+            max_chunk_chars: int | None = None
 
         class DesignRequest(BaseModel):
             base_voice_id: str | None = None
@@ -763,6 +773,7 @@ class VoxCPMService:
             preview_text: str
             inference_timesteps: int | None = None
             cfg_value: float | None = None
+            max_chunk_chars: int | None = None
 
         @web_app.get("/")
         @web_app.get("/health")

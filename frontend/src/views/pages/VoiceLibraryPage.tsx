@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { Plus, Sliders, Play, Pause, Upload, Loader2, ChevronDown, ChevronRight, Copy, Check, Edit2, Trash2, Mic, RefreshCw } from "lucide-react";
+import { Plus, Sliders, Play, Pause, Upload, Loader2, ChevronDown, ChevronRight, Edit2, Trash2, Mic, RefreshCw, Download } from "lucide-react";
 import { useVoiceController } from "@/controllers/useVoiceController";
 import { Button } from "@/views/components/ui/button";
 import { Input } from "@/views/components/ui/input";
@@ -95,33 +95,40 @@ export const VoiceLibraryPage: React.FC = () => {
     submitDelete,
     // Audio
     playingVoiceId,
+    downloadingVoiceId,
     togglePreview,
+    downloadVoicePreview,
   } = useVoiceController();
 
-  const [copiedVoiceId, setCopiedVoiceId] = React.useState<string | null>(null);
-
-  const handleCopyVoiceId = (id: string) => {
-    navigator.clipboard.writeText(id);
-    setCopiedVoiceId(id);
-    setTimeout(() => setCopiedVoiceId(null), 2000);
-  };
-
   const filteredVoices = voices.filter((v) => {
+    if (v.voice_type === "built_in") return false;
     if (filterLang === "all") return true;
     return v.language === filterLang;
   });
 
   return (
     <div className="space-y-6 max-w-6xl">
-      {/* Page Header */}
+      {/* Language Filter & Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-semibold tracking-tight text-foreground">
-            Voice Library
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            Explore built-in speakers, clone custom voices with consent, or design acoustic variations.
-          </p>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground font-medium">Filter language:</span>
+          <div className="flex gap-1.5">
+            {[
+              { id: "all", label: "All Voices" },
+              { id: "km-KH", label: "Khmer (km-KH)" },
+              { id: "en-US", label: "English (en-US)" },
+            ].map((tab) => (
+              <Button
+                key={tab.id}
+                variant={filterLang === tab.id ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setFilterLang(tab.id)}
+                className="text-xs h-7 px-2.5"
+              >
+                {tab.label}
+              </Button>
+            ))}
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
@@ -133,28 +140,6 @@ export const VoiceLibraryPage: React.FC = () => {
             <Plus className="h-4 w-4 mr-1.5" />
             Clone Voice
           </Button>
-        </div>
-      </div>
-
-      {/* Language Filter */}
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-muted-foreground font-medium">Filter language:</span>
-        <div className="flex gap-1.5">
-          {[
-            { id: "all", label: "All Voices" },
-            { id: "km-KH", label: "Khmer (km-KH)" },
-            { id: "en-US", label: "English (en-US)" },
-          ].map((tab) => (
-            <Button
-              key={tab.id}
-              variant={filterLang === tab.id ? "secondary" : "ghost"}
-              size="sm"
-              onClick={() => setFilterLang(tab.id)}
-              className="text-xs h-7 px-2.5"
-            >
-              {tab.label}
-            </Button>
-          ))}
         </div>
       </div>
 
@@ -206,82 +191,8 @@ export const VoiceLibraryPage: React.FC = () => {
                     </Badge>
                   </div>
                 </CardHeader>
-                <CardContent className="space-y-3 pt-2">
-                  <p className="text-xs text-muted-foreground line-clamp-2 min-h-[32px]">
-                    {voice.description || (
-                      voice.voice_type === "cloned"
-                        ? `Custom timbre clone synthesized from ${String(voice.modifiers?.duration_seconds ?? "")}s reference sample.`
-                        : voice.voice_type === "designed"
-                        ? `Acoustic variation (Pitch: ${String(voice.modifiers?.pitch ?? 1.0)}x, Speed: ${String(voice.modifiers?.speed ?? 1.0)}x${voice.modifiers?.emotion ? `, ${String(voice.modifiers.emotion)}` : ""}).`
-                        : "High-clarity neural acoustic profile for production synthesis."
-                    )}
-                  </p>
-
-                  {voice.voice_type === "designed" && (
-                    <div className="flex flex-wrap gap-1.5 text-[11px] text-muted-foreground font-mono">
-                      {Boolean(voice.modifiers?.gender) && (
-                        <span className="px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 capitalize">
-                          {String(voice.modifiers?.gender)}
-                        </span>
-                      )}
-                      <span className="px-1.5 py-0.5 rounded bg-muted">Pitch: {String(voice.modifiers?.pitch ?? 1.0)}x</span>
-                      <span className="px-1.5 py-0.5 rounded bg-muted">Speed: {String(voice.modifiers?.speed ?? 1.0)}x</span>
-                      {Boolean(voice.modifiers?.emotion) && (
-                        <span className="px-1.5 py-0.5 rounded bg-muted capitalize">{String(voice.modifiers?.emotion)}</span>
-                      )}
-                    </div>
-                  )}
-
-                  {voice.voice_type === "cloned" && (
-                    <div className="flex flex-wrap gap-1.5 text-[11px] text-muted-foreground font-mono">
-                      <span className="px-1.5 py-0.5 rounded bg-blue-50 text-[#1264F5] border border-blue-200">
-                        Timbre Reference
-                      </span>
-                      {Boolean(voice.modifiers?.gender) && (
-                        <span className="px-1.5 py-0.5 rounded bg-muted capitalize">
-                          {String(voice.modifiers?.gender)}
-                        </span>
-                      )}
-                      {Boolean(voice.modifiers?.duration_seconds) && (
-                        <span className="px-1.5 py-0.5 rounded bg-muted">{String(voice.modifiers?.duration_seconds)}s sample</span>
-                      )}
-                    </div>
-                  )}
-                  <p
-                    className="text-[11px] text-muted-foreground/80 font-mono truncate"
-                    title={
-                      String(
-                        voice.modifiers?.prompt_text ||
-                          getDefaultPreviewForLanguage(voice.language) ||
-                          voice.description ||
-                          voice.name
-                      )
-                    }
-                  >
-                    Preview: &ldquo;
-                    {String(
-                      voice.modifiers?.prompt_text ||
-                        getDefaultPreviewForLanguage(voice.language) ||
-                        voice.name
-                    ).slice(0, 32)}
-                    ...&rdquo;
-                  </p>
-
-                  <div className="flex items-center justify-between pt-2 border-t border-border">
-                    <button
-                      type="button"
-                      onClick={() => handleCopyVoiceId(voice.id)}
-                      className="inline-flex items-center gap-1.5 text-[11px] font-mono text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
-                      title="Click to copy Voice ID for MCP or API"
-                    >
-                      <span>ID: {voice.id.slice(0, 14)}...</span>
-                      {copiedVoiceId === voice.id ? (
-                        <Check className="h-3 w-3 text-emerald-600" />
-                      ) : (
-                        <Copy className="h-3 w-3 opacity-60 group-hover:opacity-100 transition-opacity" />
-                      )}
-                    </button>
-                    <div className="flex items-center gap-1.5">
+                <CardContent className="pt-2">
+                  <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-border">
                       {voice.voice_type !== "built_in" && (
                         <>
                           <Button
@@ -304,6 +215,21 @@ export const VoiceLibraryPage: React.FC = () => {
                           </Button>
                         </>
                       )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => downloadVoicePreview(voice)}
+                        disabled={downloadingVoiceId === voice.id}
+                        className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+                        title="Download Voice Sample"
+                        aria-label={`Download ${voice.name}`}
+                      >
+                        {downloadingVoiceId === voice.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Download className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
                       <Button
                         variant={isPlaying ? "default" : "outline"}
                         size="sm"
@@ -330,7 +256,6 @@ export const VoiceLibraryPage: React.FC = () => {
                         <Mic className="h-3.5 w-3.5" />
                         <span>Use</span>
                       </Link>
-                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -478,15 +403,12 @@ export const VoiceLibraryPage: React.FC = () => {
 
       {/* Voice Design Modal */}
       <Dialog open={activeModal === "design"} onOpenChange={(open) => !open && closeModal()}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Acoustic Voice Design</DialogTitle>
-            <DialogDescription>
-              Derive a new voice profile by adjusting acoustic pitch and speaking pace modifiers.
-            </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
+          <div className="space-y-4 py-2 overflow-y-auto pr-1 flex-1">
             <div className="space-y-1">
               <Label htmlFor="design-name">Voice Name</Label>
               <Input
@@ -548,45 +470,6 @@ export const VoiceLibraryPage: React.FC = () => {
               )}
             </div>
 
-            <div className="space-y-2">
-              <div className="flex justify-between items-center text-sm">
-                <Label>Pitch Modifier</Label>
-                <span className="font-mono text-xs text-muted-foreground">{designPitch.toFixed(2)}x</span>
-              </div>
-              <Slider
-                value={[designPitch]}
-                min={0.5}
-                max={1.5}
-                step={0.05}
-                onValueChange={(val) => setDesignPitch(val[0])}
-              />
-              <div className="flex justify-between text-[11px] text-muted-foreground">
-                <span>0.5x Lower</span>
-                <span>1.0x Default</span>
-                <span>1.5x Higher</span>
-              </div>
-              {designErrors.pitch && (
-                <p className="text-xs text-destructive mt-1">{designErrors.pitch}</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex justify-between items-center text-sm">
-                <Label>Pace Modifier</Label>
-                <span className="font-mono text-xs text-muted-foreground">{designSpeed.toFixed(2)}x</span>
-              </div>
-              <Slider
-                value={[designSpeed]}
-                min={0.5}
-                max={1.5}
-                step={0.05}
-                onValueChange={(val) => setDesignSpeed(val[0])}
-              />
-              {designErrors.speed && (
-                <p className="text-xs text-destructive mt-1">{designErrors.speed}</p>
-              )}
-            </div>
-
             <div className="space-y-1.5">
               <Label htmlFor="design-preview-text">Preview Phrase</Label>
               <textarea
@@ -625,25 +508,36 @@ export const VoiceLibraryPage: React.FC = () => {
                 </Button>
 
                 {designPreviewAudioUrl && (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={togglePlayDesignPreview}
-                    className="h-8 text-xs"
-                  >
-                    {isPlayingDesignPreview ? (
-                      <>
-                        <Pause className="h-3.5 w-3.5 mr-1.5" />
-                        Stop ({designPreviewDuration.toFixed(1)}s)
-                      </>
-                    ) : (
-                      <>
-                        <Play className="h-3.5 w-3.5 mr-1.5" />
-                        Listen ({designPreviewDuration.toFixed(1)}s)
-                      </>
-                    )}
-                  </Button>
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={togglePlayDesignPreview}
+                      className="h-8 text-xs"
+                    >
+                      {isPlayingDesignPreview ? (
+                        <>
+                          <Pause className="h-3.5 w-3.5 mr-1.5" />
+                          Stop ({designPreviewDuration.toFixed(1)}s)
+                        </>
+                      ) : (
+                        <>
+                          <Play className="h-3.5 w-3.5 mr-1.5" />
+                          Listen ({designPreviewDuration.toFixed(1)}s)
+                        </>
+                      )}
+                    </Button>
+                    <a
+                      href={designPreviewAudioUrl}
+                      download={`${(designName || "voice_design_preview").trim().replace(/[^a-zA-Z0-9_-]+/g, "_") || "voice_design_preview"}.wav`}
+                      className="inline-flex items-center justify-center h-8 px-2.5 rounded-md border border-input bg-background text-xs font-medium text-foreground hover:bg-muted transition-colors gap-1"
+                      title="Download Preview Audio"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      <span>Download</span>
+                    </a>
+                  </div>
                 )}
               </div>
             </div>
@@ -665,6 +559,45 @@ export const VoiceLibraryPage: React.FC = () => {
 
               {showAdvancedDesign && (
                 <div className="mt-3 space-y-3 pt-2 border-t border-border">
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center text-xs">
+                      <Label className="text-xs">Pitch Modifier</Label>
+                      <span className="font-mono text-xs text-muted-foreground">{designPitch.toFixed(2)}x</span>
+                    </div>
+                    <Slider
+                      value={[designPitch]}
+                      min={0.5}
+                      max={1.5}
+                      step={0.05}
+                      onValueChange={(val) => setDesignPitch(val[0])}
+                    />
+                    <div className="flex justify-between text-[11px] text-muted-foreground">
+                      <span>0.5x Lower</span>
+                      <span>1.0x Default</span>
+                      <span>1.5x Higher</span>
+                    </div>
+                    {designErrors.pitch && (
+                      <p className="text-xs text-destructive mt-1">{designErrors.pitch}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center text-xs">
+                      <Label className="text-xs">Pace Modifier</Label>
+                      <span className="font-mono text-xs text-muted-foreground">{designSpeed.toFixed(2)}x</span>
+                    </div>
+                    <Slider
+                      value={[designSpeed]}
+                      min={0.5}
+                      max={1.5}
+                      step={0.05}
+                      onValueChange={(val) => setDesignSpeed(val[0])}
+                    />
+                    {designErrors.speed && (
+                      <p className="text-xs text-destructive mt-1">{designErrors.speed}</p>
+                    )}
+                  </div>
+
                   <div className="space-y-1">
                     <Label htmlFor="design-base" className="text-xs">Base Speaker Profile</Label>
                     <select

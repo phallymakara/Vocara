@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { apiClient, ApiError } from "@/controllers/apiClient";
 import type { VoiceItem, JobItem, SystemLanguage } from "@/models/types";
@@ -23,6 +23,22 @@ export function useTTSController() {
   const [textError, setTextError] = useState<string | null>(null);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [generalError, setGeneralError] = useState<string | null>(null);
+
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const activeUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+      if (activeUrlRef.current) {
+        URL.revokeObjectURL(activeUrlRef.current);
+      }
+    };
+  }, []);
 
   const charCount = text.length;
   const isAsyncMode = charCount >= 250;
@@ -95,6 +111,20 @@ export function useTTSController() {
     }
   };
 
+  const clearActiveGeneration = () => {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+  };
+
+  const stopGeneration = () => {
+    clearActiveGeneration();
+    setIsLoading(false);
+  };
+
   const synthesize = async () => {
     setTextError(null);
     setVoiceError(null);
@@ -115,30 +145,50 @@ export function useTTSController() {
       return;
     }
 
+    clearActiveGeneration();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setIsLoading(true);
+    if (activeUrlRef.current) {
+      URL.revokeObjectURL(activeUrlRef.current);
+      activeUrlRef.current = null;
+    }
     setGeneratedAudioUrl(null);
     setActiveJob(null);
 
     try {
-      const result = await apiClient.synthesizeSpeech({
-        text,
-        voice_id: selectedVoiceId,
-        language,
-        speed,
-        output_format: outputFormat,
-      });
+      const result = await apiClient.synthesizeSpeech(
+        {
+          text,
+          voice_id: selectedVoiceId,
+          language,
+          speed,
+          output_format: outputFormat,
+        },
+        controller.signal
+      );
+
+      if (controller.signal.aborted) return;
 
       if (result.type === "stream") {
         const url = URL.createObjectURL(result.audioBlob);
+        activeUrlRef.current = url;
         setGeneratedAudioUrl(url);
         setAudioDuration(result.duration);
         setIsLoading(false);
+        abortControllerRef.current = null;
       } else if (result.type === "job") {
         setActiveJob(result.job);
-        pollJob(result.job.id);
+        pollJob(result.job.id, controller);
       }
     } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        setIsLoading(false);
+        return;
+      }
       setIsLoading(false);
+      abortControllerRef.current = null;
       if (err instanceof ApiError) {
         if (err.fieldErrors?.text) {
           setTextError(err.fieldErrors.text);
@@ -153,28 +203,38 @@ export function useTTSController() {
     }
   };
 
-  const pollJob = (jobId: string) => {
-    const interval = setInterval(async () => {
+  const pollJob = (jobId: string, controller: AbortController) => {
+    pollIntervalRef.current = setInterval(async () => {
+      if (controller.signal.aborted) {
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+        }
+        return;
+      }
       try {
-        const job = await apiClient.getJob(jobId);
+        const job = await apiClient.getJob(jobId, controller.signal);
         setActiveJob(job);
 
         if (job.status === "completed") {
-          clearInterval(interval);
-          const blob = await apiClient.getJobResultBlob(job.id);
+          clearActiveGeneration();
+          const blob = await apiClient.getJobResultBlob(job.id, controller.signal);
           const url = URL.createObjectURL(blob);
+          activeUrlRef.current = url;
           setGeneratedAudioUrl(url);
           setAudioDuration(job.audio_duration_seconds);
           setIsLoading(false);
         } else if (job.status === "failed") {
-          clearInterval(interval);
+          clearActiveGeneration();
           setIsLoading(false);
           setGeneralError(job.error_message || "The synthesis job could not be completed.");
         }
-      } catch {
-        clearInterval(interval);
+      } catch (err: unknown) {
+        clearActiveGeneration();
         setIsLoading(false);
-        setGeneralError("Failed to check job progress.");
+        if (!(err instanceof DOMException && err.name === "AbortError")) {
+          setGeneralError("Failed to check job progress.");
+        }
       }
     }, 1500);
   };
@@ -183,6 +243,7 @@ export function useTTSController() {
     text,
     setText,
     voices,
+    languages,
     selectedVoiceId,
     setSelectedVoiceId,
     language,
@@ -203,6 +264,7 @@ export function useTTSController() {
     setVoiceError,
     generalError,
     synthesize,
+    stopGeneration,
     hasApiKey: Boolean(apiClient.getApiKey()),
   };
 }
