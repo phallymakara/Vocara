@@ -5,8 +5,6 @@ import { useVoiceController } from "@/controllers/useVoiceController";
 import { Button } from "@/views/components/ui/button";
 import { Input } from "@/views/components/ui/input";
 import { Label } from "@/views/components/ui/label";
-import { Badge } from "@/views/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/views/components/ui/card";
 import { Slider } from "@/views/components/ui/slider";
 import {
   Dialog,
@@ -23,6 +21,8 @@ export const VoiceLibraryPage: React.FC = () => {
     isLoading,
     filterLang,
     setFilterLang,
+    filterGender,
+    setFilterGender,
     activeModal,
     openCloneModal,
     openDesignModal,
@@ -101,164 +101,210 @@ export const VoiceLibraryPage: React.FC = () => {
   } = useVoiceController();
 
   const filteredVoices = voices.filter((v) => {
-    if (v.voice_type === "built_in") return false;
-    if (filterLang === "all") return true;
-    return v.language === filterLang;
+    if (filterLang !== "all" && v.language !== filterLang) return false;
+    if (filterGender !== "all") {
+      const gender = String(v.modifiers?.gender ?? "").trim().toLowerCase();
+      if (gender !== filterGender) return false;
+    }
+    return true;
   });
 
   return (
-    <div className="space-y-6 max-w-6xl">
-      {/* Language Filter & Actions */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground font-medium">Filter language:</span>
-          <div className="flex gap-1.5">
-            {[
-              { id: "all", label: "All Voices" },
-              { id: "km-KH", label: "Khmer (km-KH)" },
-              { id: "en-US", label: "English (en-US)" },
-            ].map((tab) => (
-              <Button
+    <div className="space-y-6 max-w-5xl mx-auto">
+      {/* Filters & Actions */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Language Filter Buttons */}
+          {[
+            { id: "all", label: "All Voices" },
+            { id: "km-KH", label: "Khmer (km-KH)" },
+            { id: "en-US", label: "English (en-US)" },
+          ].map((tab) => {
+            const isActive = filterLang === tab.id;
+            return (
+              <button
                 key={tab.id}
-                variant={filterLang === tab.id ? "secondary" : "ghost"}
-                size="sm"
+                type="button"
                 onClick={() => setFilterLang(tab.id)}
-                className="text-xs h-7 px-2.5"
+                className={`h-8 px-3.5 rounded-full border text-xs transition-colors cursor-pointer ${
+                  isActive
+                    ? "border-[#1264F5] bg-[#1264F5] hover:bg-[#0E52CC] text-white font-semibold"
+                    : "border-[#E5EBF5] bg-white text-[#64748B] font-medium hover:text-[#15213D] hover:bg-[#F8FAFC]"
+                }`}
               >
                 {tab.label}
-              </Button>
-            ))}
-          </div>
+              </button>
+            );
+          })}
+
+          <span className="hidden sm:inline-block h-4 w-px bg-[#E5EBF5] mx-1" aria-hidden="true" />
+
+          {/* Gender Filter Buttons */}
+          {[
+            { id: "all", label: "All" },
+            { id: "female", label: "Female" },
+            { id: "male", label: "Male" },
+          ].map((tab) => {
+            const isActive = filterGender === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setFilterGender(tab.id)}
+                className={`h-8 px-3.5 rounded-full border text-xs transition-colors cursor-pointer ${
+                  isActive
+                    ? "border-[#1264F5] bg-[#1264F5] hover:bg-[#0E52CC] text-white font-semibold"
+                    : "border-[#E5EBF5] bg-white text-[#64748B] font-medium hover:text-[#15213D] hover:bg-[#F8FAFC]"
+                }`}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={openDesignModal}>
-            <Sliders className="h-4 w-4 mr-1.5" />
-            Design Voice
-          </Button>
-          <Button size="sm" onClick={openCloneModal}>
-            <Plus className="h-4 w-4 mr-1.5" />
-            Clone Voice
-          </Button>
+        <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={openDesignModal}
+            className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full border border-[#E5EBF5] bg-white hover:bg-[#F8FAFC] hover:border-[#1264F5]/40 text-xs font-semibold text-[#15213D] transition-colors cursor-pointer"
+          >
+            <Sliders className="h-3.5 w-3.5 text-[#1264F5]" />
+            <span>Design Voice</span>
+          </button>
+          <button
+            type="button"
+            onClick={openCloneModal}
+            className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-[#1264F5] hover:bg-[#0E52CC] text-xs font-semibold text-white transition-colors cursor-pointer"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span>Clone Voice</span>
+          </button>
         </div>
       </div>
 
       {/* Voice Grid */}
       {isLoading ? (
-        <div className="py-12 flex justify-center items-center text-muted-foreground text-sm">
-          <Loader2 className="h-5 w-5 animate-spin mr-2" />
+        <div className="py-14 flex justify-center items-center text-[#64748B] text-sm">
+          <Loader2 className="h-5 w-5 animate-spin mr-2 text-[#1264F5]" />
           Loading voices...
         </div>
       ) : filteredVoices.length === 0 ? (
-        <div className="py-12 text-center text-muted-foreground text-sm border border-dashed rounded-lg">
+        <div className="min-h-[50vh] flex items-center justify-center text-center text-[#64748B] text-sm">
           No voices found for this filter.
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredVoices.map((voice) => {
             const isPlaying = playingVoiceId === voice.id;
+            const voiceTypeLabel =
+              voice.voice_type === "cloned"
+                ? "Cloned Voice"
+                : voice.voice_type === "designed"
+                ? "Designed Voice"
+                : "Built-in";
             return (
-              <Card key={voice.id} className="relative">
-                <CardHeader className="pb-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <CardTitle className="text-base">{voice.name}</CardTitle>
-                      <CardDescription className="text-xs mt-0.5">
-                        {voice.language} • {voice.visibility}
-                      </CardDescription>
-                    </div>
-                    <Badge
-                      variant={
-                        voice.voice_type === "cloned"
-                          ? "default"
-                          : voice.voice_type === "designed"
-                          ? "secondary"
-                          : "outline"
-                      }
-                      className={`text-[11px] font-medium ${
-                        voice.voice_type === "cloned"
-                          ? "bg-[#1264F5] text-white hover:bg-[#0E52CC]"
-                          : voice.voice_type === "designed"
-                          ? "bg-purple-600 text-white hover:bg-purple-700"
-                          : ""
+              <div
+                key={voice.id}
+                className={`group flex flex-col justify-between bg-white border rounded-3xl px-5 py-6 min-h-[164px] w-full max-w-sm transition-colors ${
+                  isPlaying
+                    ? "border-[#1264F5]"
+                    : "border-[#E5EBF5] hover:border-[#1264F5]/40"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="text-[15px] font-semibold text-[#15213D] leading-snug truncate">
+                      {voice.name}
+                    </h3>
+                    <p className="text-xs text-[#64748B] mt-1 capitalize">
+                      {voice.language} &middot; {voice.visibility}
+                    </p>
+                  </div>
+                  <span
+                    className={`shrink-0 text-[11px] font-medium ${
+                      voice.voice_type === "cloned"
+                        ? "text-[#1264F5]"
+                        : "text-[#64748B]"
+                    }`}
+                  >
+                    {voiceTypeLabel}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between gap-2 pt-4 mt-4 border-t border-[#E5EBF5]">
+                  <div className="flex items-center gap-1">
+                    {voice.voice_type !== "built_in" && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => openEditModal(voice)}
+                          className="h-8 w-8 rounded-lg inline-flex items-center justify-center text-[#64748B] hover:text-[#15213D] hover:bg-[#F8FAFC] transition-colors cursor-pointer"
+                          title="Edit Voice"
+                          aria-label={`Edit ${voice.name}`}
+                        >
+                          <Edit2 className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openDeleteConfirm(voice)}
+                          className="h-8 w-8 rounded-lg inline-flex items-center justify-center text-[#64748B] hover:text-destructive hover:bg-destructive/5 transition-colors cursor-pointer"
+                          title="Delete Voice"
+                          aria-label={`Delete ${voice.name}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => downloadVoicePreview(voice)}
+                      disabled={downloadingVoiceId === voice.id}
+                      className="h-8 w-8 rounded-lg inline-flex items-center justify-center text-[#64748B] hover:text-[#15213D] hover:bg-[#F8FAFC] disabled:opacity-40 transition-colors cursor-pointer"
+                      title="Download Voice Sample"
+                      aria-label={`Download ${voice.name}`}
+                    >
+                      {downloadingVoiceId === voice.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-[#1264F5]" />
+                      ) : (
+                        <Download className="h-3.5 w-3.5" />
+                      )}
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => togglePreview(voice.id)}
+                      className={`inline-flex items-center justify-center h-8 px-3.5 rounded-full border text-xs font-medium gap-1.5 transition-colors cursor-pointer ${
+                        isPlaying
+                          ? "border-[#1264F5] bg-[#1264F5] text-white hover:bg-[#0E52CC]"
+                          : "border-[#E5EBF5] bg-white text-[#15213D] hover:border-[#1264F5]/40 hover:text-[#1264F5]"
                       }`}
                     >
-                      {voice.voice_type === "cloned"
-                        ? "Cloned Voice"
-                        : voice.voice_type === "designed"
-                        ? "Designed Voice"
-                        : "Built-in"}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-2">
-                  <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-border">
-                      {voice.voice_type !== "built_in" && (
+                      {isPlaying ? (
                         <>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openEditModal(voice)}
-                            className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
-                            title="Edit Voice"
-                          >
-                            <Edit2 className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openDeleteConfirm(voice)}
-                            className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
-                            title="Delete Voice"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
+                          <Pause className="h-3.5 w-3.5" />
+                          <span>Stop</span>
+                        </>
+                      ) : (
+                        <>
+                          <Play className="h-3.5 w-3.5" />
+                          <span>Preview</span>
                         </>
                       )}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => downloadVoicePreview(voice)}
-                        disabled={downloadingVoiceId === voice.id}
-                        className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
-                        title="Download Voice Sample"
-                        aria-label={`Download ${voice.name}`}
-                      >
-                        {downloadingVoiceId === voice.id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Download className="h-3.5 w-3.5" />
-                        )}
-                      </Button>
-                      <Button
-                        variant={isPlaying ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => togglePreview(voice.id)}
-                        className="h-8 text-xs gap-1.5"
-                      >
-                        {isPlaying ? (
-                          <>
-                            <Pause className="h-3.5 w-3.5" />
-                            <span>Stop</span>
-                          </>
-                        ) : (
-                          <>
-                            <Play className="h-3.5 w-3.5" />
-                            <span>Preview</span>
-                          </>
-                        )}
-                      </Button>
-                      <Link
-                        to={`/?voice=${encodeURIComponent(voice.id)}`}
-                        className="inline-flex items-center justify-center h-8 px-2.5 text-xs font-medium rounded border border-input bg-background hover:bg-slate-100 dark:hover:bg-slate-800 text-sky-600 hover:text-sky-700 transition-colors gap-1"
-                        title="Use this voice in TTS Studio"
-                      >
-                        <Mic className="h-3.5 w-3.5" />
-                        <span>Use</span>
-                      </Link>
+                    </button>
+                    <Link
+                      to={`/?voice=${encodeURIComponent(voice.id)}`}
+                      className="inline-flex items-center justify-center h-8 px-3.5 rounded-full bg-[#EBF2FE] text-[#1264F5] hover:bg-[#1264F5] hover:text-white text-xs font-semibold transition-colors gap-1.5"
+                      title="Use this voice in TTS Studio"
+                    >
+                      <Mic className="h-3.5 w-3.5" />
+                      <span>Use</span>
+                    </Link>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             );
           })}
         </div>

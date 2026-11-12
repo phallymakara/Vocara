@@ -18,6 +18,12 @@ class CreateApiKeyRequest(BaseModel):
     )
 
 
+class UpdateApiKeyRequest(BaseModel):
+    """Request payload for updating an existing API key's label."""
+
+    name: str = Field(..., min_length=2, max_length=100, description="New label for the API key")
+
+
 class ApiKeyResponse(BaseModel):
     """Public metadata for an API key (raw secret is excluded)."""
 

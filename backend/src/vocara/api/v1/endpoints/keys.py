@@ -1,12 +1,13 @@
 """API endpoints for API Key lifecycle management."""
 
-from fastapi import APIRouter, Header, Request, status
+from fastapi import APIRouter, Header, Query, Request, status
 
 from vocara.api.deps import AuthServiceDep, CurrentApiKey, OptionalApiKey
 from vocara.api.v1.schemas.keys import (
     ApiKeyCreatedResponse,
     ApiKeyResponse,
     CreateApiKeyRequest,
+    UpdateApiKeyRequest,
 )
 
 router = APIRouter(prefix="/keys", tags=["Account & Keys"])
@@ -82,15 +83,63 @@ async def list_api_keys(
     ]
 
 
-@router.delete(
+@router.patch(
     "/{key_id}",
+    response_model=ApiKeyResponse,
+    summary="Update API Key Name",
+)
+async def update_api_key(
+    key_id: str,
+    payload: UpdateApiKeyRequest,
+    current_key: CurrentApiKey,
+    auth_service: AuthServiceDep,
+) -> ApiKeyResponse:
+    """Update an API key's label."""
+    updated = await auth_service.update_key_name(
+        owner_id=current_key.owner_id,
+        key_id=key_id,
+        name=payload.name,
+    )
+    return ApiKeyResponse(
+        id=updated.id,
+        name=updated.name,
+        key_prefix=updated.key_prefix,
+        status=updated.status.value,
+        rate_limit_per_minute=updated.rate_limit_per_minute,
+        char_quota_per_month=updated.char_quota_per_month,
+        chars_used_this_month=updated.chars_used_this_month,
+        last_used_at=updated.last_used_at,
+        created_at=updated.created_at,
+    )
+
+
+@router.post(
+    "/{key_id}/revoke",
     summary="Revoke an API Key",
 )
-async def revoke_api_key(
+async def revoke_api_key_action(
     key_id: str,
     current_key: CurrentApiKey,
     auth_service: AuthServiceDep,
 ) -> dict[str, str]:
     """Revoke an active API key immediately."""
+    await auth_service.revoke_key(owner_id=current_key.owner_id, key_id=key_id)
+    return {"status": "revoked", "key_id": key_id}
+
+
+@router.delete(
+    "/{key_id}",
+    summary="Revoke or Delete an API Key",
+)
+async def delete_or_revoke_api_key(
+    key_id: str,
+    current_key: CurrentApiKey,
+    auth_service: AuthServiceDep,
+    permanent: bool = Query(default=False, description="Permanently delete the key instead of revoking"),
+) -> dict[str, str]:
+    """Revoke an API key by default, or permanently remove it when permanent=true."""
+    if permanent:
+        await auth_service.delete_key(owner_id=current_key.owner_id, key_id=key_id)
+        return {"status": "deleted", "key_id": key_id}
     await auth_service.revoke_key(owner_id=current_key.owner_id, key_id=key_id)
     return {"status": "revoked", "key_id": key_id}

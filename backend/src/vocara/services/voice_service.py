@@ -158,12 +158,16 @@ class VoiceService:
                     )
                 return audio_bytes, content_type
             except Exception:
-                pass  # Fall through to synthetic generation
+                # Missing preview blob: clear stale preview key (keep real reference.wav if distinct)
+                if voice.voice_type == VoiceType.BUILT_IN:
+                    if voice.reference_audio_key == voice.preview_audio_key:
+                        voice.reference_audio_key = None
+                    voice.preview_audio_key = None
 
         # If preview audio is missing, synthesize using canonical default preview text
         if self.inference_engine:
             try:
-                preview_text = get_preview_text_for_language(voice.language)
+                preview_text = self._get_default_preview(voice.language)
                 audio_bytes, _ = await self.inference_engine.generate_speech(
                     text=preview_text,
                     voice=voice,

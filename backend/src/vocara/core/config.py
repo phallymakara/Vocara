@@ -7,46 +7,6 @@ from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-def _default_seed_voices() -> list[dict[str, Any]]:
-    """Default built-in voice definitions (overridable via DEFAULT_SEED_VOICES env JSON)."""
-    return [
-        {
-            "id": "voice-sophea-built-in",
-            "name": "Sophea (Default Female)",
-            "language": "km-KH",
-            "description": "Warm, friendly Cambodian woman speaking natural conversational Khmer.",
-            "reference_audio_key": "voices/voice-sophea-built-in/preview.wav",
-            "preview_audio_key": "voices/voice-sophea-built-in/preview.wav",
-            "modifiers": {
-                "gender": "female",
-                "control_instruction": "young Cambodian woman, warm gentle friendly conversational tone, natural pace",
-            },
-        },
-        {
-            "id": "voice-dara-built-in",
-            "name": "Dara (Default Male)",
-            "language": "km-KH",
-            "description": "Calm, authoritative Cambodian man speaking clear conversational Khmer.",
-            "reference_audio_key": "voices/voice-dara-built-in/preview.wav",
-            "preview_audio_key": "voices/voice-dara-built-in/preview.wav",
-            "modifiers": {
-                "gender": "male",
-                "control_instruction": "adult Cambodian man, warm deep resonant voice, calm conversational pace",
-            },
-        },
-        {
-            "id": "voice-alex-built-in",
-            "name": "Alex (English Natural)",
-            "language": "en-US",
-            "description": "Natural, balanced English speaker for general conversational audio.",
-            "modifiers": {
-                "gender": "neutral",
-                "control_instruction": "adult speaker, natural balanced clear conversational voice, moderate pace",
-            },
-        },
-    ]
-
-
 class Settings(BaseSettings):
     """Vocara API application settings loaded from environment variables."""
 
@@ -71,18 +31,27 @@ class Settings(BaseSettings):
     # Security
     API_KEY_SALT: str = Field(default="dev-salt-change-in-production")
     SECRET_KEY: str = Field(default="dev-secret-change-in-production")
-    CORS_ORIGINS: list[str] | str = Field(
-        default_factory=lambda: ["http://localhost:3000", "http://127.0.0.1:3000"]
-    )
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7
+    FREE_PLAN_CHAR_QUOTA_PER_MONTH: int = 100000
+    FREE_PLAN_RATE_LIMIT_PER_MINUTE: int = 60
+
+    # Google OAuth 2.0
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_REDIRECT_URI: str = ""
+    FRONTEND_APP_URL: str = ""
+
+    CORS_ORIGINS: list[str] | str = Field(default_factory=list)
 
     # PostgreSQL Database
-    DATABASE_URL: str = "postgresql+asyncpg://vocara_user:vocara_password@localhost:5432/vocara_db"
+    DATABASE_URL: str = ""
     DB_POOL_SIZE: int = 10
     DB_MAX_OVERFLOW: int = 20
     DB_ECHO: bool = False
 
     # Redis
-    REDIS_URL: str = "redis://localhost:6379/0"
+    REDIS_URL: str = ""
     REDIS_MAX_CONNECTIONS: int = 20
 
     # Storage Backend
@@ -117,7 +86,7 @@ class Settings(BaseSettings):
     DEFAULT_PREVIEW_TEXT_KM: str = "សួស្តី ខ្ញុំជាវូការា ជាអេអាយបម្លែងអក្សរទៅជាសម្លេង។"
     DEFAULT_PREVIEW_TEXT_EN: str = "Hello, I am Vocara, an AI text-to-speech converter."
     DEFAULT_DEV_OWNER_ID: str = "default_developer"
-    DEFAULT_SEED_VOICES: list[dict[str, Any]] = Field(default_factory=_default_seed_voices)
+    DEFAULT_SEED_VOICES: list[dict[str, Any]] = Field(default_factory=list)
     INFERENCE_TIMEOUT_SECONDS: int = 60
 
     # Rate Limiting & Quotas
@@ -153,7 +122,7 @@ class Settings(BaseSettings):
             return [origin.strip() for origin in val.split(",") if origin.strip()]
         if isinstance(value, (list, tuple, set)):
             return [str(origin).strip() for origin in value if str(origin).strip()]
-        return ["http://localhost:3000", "http://127.0.0.1:3000"]
+        return []
 
     @field_validator("DEFAULT_SEED_VOICES", mode="before")
     @classmethod
@@ -164,13 +133,13 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             val = value.strip()
             if not val:
-                return _default_seed_voices()
+                return []
             parsed = json.loads(val)
             if isinstance(parsed, list):
                 return [dict(item) for item in parsed if isinstance(item, dict)]
         if isinstance(value, list):
             return [dict(item) for item in value if isinstance(item, dict)]
-        return _default_seed_voices()
+        return []
 
     @model_validator(mode="after")
     def validate_production_security(self) -> "Settings":

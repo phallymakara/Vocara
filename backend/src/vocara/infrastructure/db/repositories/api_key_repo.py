@@ -1,6 +1,6 @@
 """SQLAlchemy repository implementation for ApiKeyRepository port."""
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -78,6 +78,16 @@ class SqlApiKeyRepository(BaseRepository[ApiKeyModel], ApiKeyRepository):
         created_model = await self._create_model(model)
         return self._to_entity(created_model)
 
+    async def update_name(self, key_id: str, name: str) -> ApiKey | None:
+        """Update the label of an existing API key."""
+        model = await self._get_model_by_id(key_id)
+        if not model:
+            return None
+        model.name = name
+        await self.session.flush()
+        await self.session.refresh(model)
+        return self._to_entity(model)
+
     async def revoke(self, key_id: str) -> bool:
         """Revoke an API key immediately."""
         query = (
@@ -85,6 +95,15 @@ class SqlApiKeyRepository(BaseRepository[ApiKeyModel], ApiKeyRepository):
             .where(ApiKeyModel.id == key_id)
             .values(status=ApiKeyStatus.REVOKED.value)
         )
+        result = await self.session.execute(query)
+        await self.session.flush()
+        if isinstance(result, CursorResult):
+            return result.rowcount > 0
+        return True
+
+    async def delete(self, key_id: str) -> bool:
+        """Permanently delete an API key record."""
+        query = delete(ApiKeyModel).where(ApiKeyModel.id == key_id)
         result = await self.session.execute(query)
         await self.session.flush()
         if isinstance(result, CursorResult):

@@ -37,11 +37,20 @@ class InMemoryApiKeyRepo(ApiKeyRepository):
         self.keys[api_key.id] = api_key
         return api_key
 
+    async def update_name(self, key_id: str, name: str) -> ApiKey | None:
+        if key_id in self.keys:
+            self.keys[key_id].name = name
+            return self.keys[key_id]
+        return None
+
     async def revoke(self, key_id: str) -> bool:
         if key_id in self.keys:
             self.keys[key_id].status = ApiKeyStatus.REVOKED
             return True
         return False
+
+    async def delete(self, key_id: str) -> bool:
+        return self.keys.pop(key_id, None) is not None
 
     async def increment_usage(self, key_id: str, characters: int) -> None:
         if key_id in self.keys:
@@ -63,6 +72,25 @@ class InMemoryUsageRepo(UsageRepository):
             for r in self.records
             if r.owner_id == owner_id and r.timestamp.year == year and r.timestamp.month == month
         )
+
+    async def get_monthly_analytics(
+        self, owner_id: str, year: int, month: int, tz_offset_minutes: int = 0
+    ) -> dict:
+        matching = [
+            r
+            for r in self.records
+            if r.owner_id == owner_id and r.timestamp.year == year and r.timestamp.month == month
+        ]
+        return {
+            "total_requests": len(matching),
+            "total_audio_seconds": sum(r.duration_seconds for r in matching),
+            "daily_usage": [],
+            "by_operation": [],
+            "monthly_usage": [],
+            "hourly_usage": [],
+            "hourly_by_date": {},
+            "by_key": {},
+        }
 
 
 @pytest.fixture

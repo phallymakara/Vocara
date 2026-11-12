@@ -15,12 +15,14 @@ from vocara.domain.ports import (
     JobQueue,
     JobRepository,
     UsageRepository,
+    UserRepository,
     VoiceRepository,
     WebhookRepository,
 )
 from vocara.infrastructure.db.repositories.api_key_repo import SqlApiKeyRepository
 from vocara.infrastructure.db.repositories.job_repo import SqlJobRepository
 from vocara.infrastructure.db.repositories.usage_repo import SqlUsageRepository
+from vocara.infrastructure.db.repositories.user_repo import SqlUserRepository
 from vocara.infrastructure.db.repositories.voice_repo import SqlVoiceRepository
 from vocara.infrastructure.db.repositories.webhook_repo import SqlWebhookRepository
 from vocara.infrastructure.inference.fake_engine import FakeInferenceEngine
@@ -33,6 +35,7 @@ from vocara.services.auth_service import AuthService
 from vocara.services.job_service import JobService
 from vocara.services.tts_service import TtsService
 from vocara.services.usage_service import UsageService
+from vocara.services.user_auth_service import UserAuthService
 from vocara.services.voice_service import VoiceService
 from vocara.services.webhook_service import WebhookService
 
@@ -46,6 +49,7 @@ class Container:
         self.session_factory: async_sessionmaker[AsyncSession] | None = None
         self.storage: BlobStorage | None = None
         self.inference_engine: InferenceEngine | None = None
+        self._seed_task: Any | None = None
         self.job_queue: JobQueue | None = None
 
     async def initialize(self) -> None:
@@ -68,6 +72,23 @@ class Container:
 
             voice_repo = SqlVoiceRepository(session)
             seed_items = self.settings.DEFAULT_SEED_VOICES
+            seed_ids = {str(item.get("id", "")).strip() for item in seed_items if str(item.get("id", "")).strip()}
+
+            # Deactivate legacy built-in voices that are no longer in DEFAULT_SEED_VOICES
+            from sqlalchemy import update
+            from vocara.infrastructure.db.models.voice import VoiceModel
+
+            if seed_ids:
+                await session.execute(
+                    update(VoiceModel)
+                    .where(
+                        VoiceModel.voice_type == VoiceType.BUILT_IN.value,
+                        VoiceModel.id.notin_(seed_ids),
+                        VoiceModel.is_active.is_(True),
+                    )
+                    .values(is_active=False)
+                )
+
             for item in seed_items:
                 voice_id = str(item.get("id", "")).strip()
                 if not voice_id:
@@ -93,16 +114,25 @@ class Container:
                     # Clean legacy non-built-in reference keys or missing control_instruction on built-ins
                     needs_update = False
                     expected_prefix = f"voices/{voice_id}/"
-                    if (
-                        existing.voice_type == VoiceType.BUILT_IN
-                        and existing.reference_audio_key
-                        and not existing.reference_audio_key.startswith(expected_prefix)
-                    ):
-                        existing.reference_audio_key = item.get("reference_audio_key")
-                        existing.preview_audio_key = item.get("preview_audio_key")
-                        needs_update = True
-                    if seed_modifiers and "control_instruction" not in (existing.modifiers or {}):
-                        existing.modifiers = {**(existing.modifiers or {}), **seed_modifiers}
+                    if existing.voice_type == VoiceType.BUILT_IN:
+                        if item.get("reference_audio_key") is None and existing.reference_audio_key is not None:
+                            existing.reference_audio_key = None
+                            needs_update = True
+                        elif (
+                            (existing.reference_audio_key and not existing.reference_audio_key.startswith(expected_prefix))
+                            or (not existing.reference_audio_key and item.get("reference_audio_key"))
+                            or (not existing.preview_audio_key and item.get("preview_audio_key"))
+                        ):
+                            existing.reference_audio_key = item.get("reference_audio_key")
+                            existing.preview_audio_key = item.get("preview_audio_key")
+                            needs_update = True
+                    if seed_modifiers:
+                        merged_modifiers = {**(existing.modifiers or {}), **seed_modifiers}
+                        if merged_modifiers != (existing.modifiers or {}):
+                            existing.modifiers = merged_modifiers
+                            needs_update = True
+                    if item.get("name") and existing.name != item.get("name"):
+                        existing.name = str(item.get("name"))
                         needs_update = True
                     if needs_update:
                         await voice_repo.update(existing)
@@ -154,8 +184,101 @@ class Container:
         else:
             self.inference_engine = fake_fallback
 
+        # Seed missing built-in voice preview/reference blobs into object storage in the background
+        if (
+            self.settings.ENVIRONMENT != "testing"
+            and self.storage is not None
+            and self.inference_engine is not None
+        ):
+            import asyncio
+            self._seed_task = asyncio.create_task(self._seed_builtin_voice_blobs())
+
+    async def _seed_builtin_voice_blobs(self) -> None:
+        """Ensure every built-in voice has its preview/reference WAV seeded in object storage."""
+        if not self.storage or not self.inference_engine or not self.session_factory:
+            return
+
+        from vocara.domain.enums import AudioFormat, VoiceType
+        from vocara.infrastructure.db.repositories.voice_repo import SqlVoiceRepository
+        from vocara.services.voice_service import get_preview_text_for_language
+
+        try:
+            async with self.session_factory() as session:
+                voice_repo = SqlVoiceRepository(session)
+                for item in self.settings.DEFAULT_SEED_VOICES:
+                    voice_id = str(item.get("id", "")).strip()
+                    if not voice_id:
+                        continue
+                    voice = await voice_repo.get_by_id(voice_id)
+                    if not voice or voice.voice_type != VoiceType.BUILT_IN:
+                        continue
+
+                    expected_key = f"voices/{voice_id}/preview.wav"
+                    preview_text = get_preview_text_for_language(
+                        voice.language,
+                        km_default=self.settings.DEFAULT_PREVIEW_TEXT_KM,
+                        en_default=self.settings.DEFAULT_PREVIEW_TEXT_EN,
+                    )
+                    current_modifiers = dict(voice.modifiers or {})
+                    blob_exists = False
+                    try:
+                        await self.storage.download(expected_key)
+                        blob_exists = True
+                    except Exception:
+                        blob_exists = False
+
+                    if blob_exists and current_modifiers.get("preview_script") == preview_text:
+                        if voice.preview_audio_key != expected_key:
+                            voice.preview_audio_key = expected_key
+                            await voice_repo.update(voice)
+                            await session.commit()
+                        continue
+
+                    # Generate preview without referencing a missing/stale preview blob (keep real reference.wav if set)
+                    saved_ref_key = voice.reference_audio_key
+                    voice.preview_audio_key = None
+                    if saved_ref_key == expected_key:
+                        voice.reference_audio_key = None
+                    try:
+                        audio_bytes, _ = await self.inference_engine.generate_speech(
+                            text=preview_text,
+                            voice=voice,
+                            language=voice.language,
+                            speed=float(current_modifiers.get("speed", 1.0)),
+                            output_format=AudioFormat.WAV,
+                        )
+                        if audio_bytes:
+                            await self.storage.upload(
+                                expected_key, audio_bytes, content_type="audio/wav"
+                            )
+                            voice.preview_audio_key = expected_key
+                            voice.reference_audio_key = saved_ref_key if saved_ref_key != expected_key else None
+                            voice.modifiers = {
+                                **current_modifiers,
+                                "preview_script": preview_text,
+                            }
+                            await voice_repo.update(voice)
+                            await session.commit()
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+
     async def shutdown(self) -> None:
         """Gracefully release connections and background tasks."""
+        import asyncio
+        from contextlib import suppress
+
+        if self._seed_task and not self._seed_task.done():
+            self._seed_task.cancel()
+            with suppress(asyncio.CancelledError, Exception):
+                await self._seed_task
+
+        client = getattr(self.inference_engine, "_client", None)
+        if client is not None and not getattr(client, "is_closed", True):
+            with suppress(Exception):
+                await client.aclose()
+
         if self.db_engine:
             await self.db_engine.dispose()
 
@@ -180,10 +303,22 @@ class Container:
         """Return WebhookRepository port adapter bound to session."""
         return SqlWebhookRepository(session)
 
+    def get_user_repo(self, session: AsyncSession) -> UserRepository:
+        """Return UserRepository port adapter bound to session."""
+        return SqlUserRepository(session)
+
     # Domain Services Factory Methods
     def get_auth_service(self, session: AsyncSession) -> AuthService:
         """Return AuthService wired with ApiKeyRepository and application settings."""
         return AuthService(self.get_api_key_repo(session), self.settings)
+
+    def get_user_auth_service(self, session: AsyncSession) -> UserAuthService:
+        """Return UserAuthService wired with UserRepository, AuthService, and settings."""
+        return UserAuthService(
+            self.get_user_repo(session),
+            self.get_auth_service(session),
+            self.settings,
+        )
 
     def get_usage_service(self, session: AsyncSession) -> UsageService:
         """Return UsageService wired with UsageRepository and ApiKeyRepository."""

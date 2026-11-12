@@ -115,6 +115,20 @@ class MockUsageRepo(UsageRepository):
     async def get_monthly_usage(self, owner_id: str, year: int, month: int) -> int:
         return 0
 
+    async def get_monthly_analytics(
+        self, owner_id: str, year: int, month: int, tz_offset_minutes: int = 0
+    ) -> dict:
+        return {
+            "total_requests": 0,
+            "total_audio_seconds": 0.0,
+            "daily_usage": [],
+            "by_operation": [],
+            "monthly_usage": [],
+            "hourly_usage": [],
+            "hourly_by_date": {},
+            "by_key": {},
+        }
+
 
 class MockKeyRepo(ApiKeyRepository):
     def __init__(self) -> None:
@@ -133,8 +147,17 @@ class MockKeyRepo(ApiKeyRepository):
         self.keys[api_key.id] = api_key
         return api_key
 
+    async def update_name(self, key_id: str, name: str) -> ApiKey | None:
+        if key_id in self.keys:
+            self.keys[key_id].name = name
+            return self.keys[key_id]
+        return None
+
     async def revoke(self, key_id: str) -> bool:
         return True
+
+    async def delete(self, key_id: str) -> bool:
+        return self.keys.pop(key_id, None) is not None
 
     async def increment_usage(self, key_id: str, characters: int) -> None:
         if key_id in self.keys:

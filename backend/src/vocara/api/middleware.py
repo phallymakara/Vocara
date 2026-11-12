@@ -173,10 +173,12 @@ class InMemoryRateLimiterMiddleware(BaseHTTPMiddleware):
         self.request_records: dict[str, list[float]] = defaultdict(list)
 
     def _get_client_id(self, request: Request) -> str:
-        """Extract API key prefix or client host as identifier."""
+        """Extract API key prefix, session token prefix, or client host as identifier."""
         auth = request.headers.get("Authorization", "")
         if auth.startswith("Bearer voc_"):
-            return auth[7:23]  # Prefix
+            return auth[7:23]  # API key prefix
+        if auth.startswith("Bearer ") and len(auth) > 23:
+            return f"jwt_{auth[-16:]}"  # Per-session bucket
 
         api_key_header = request.headers.get("X-API-Key", "")
         if api_key_header.startswith("voc_"):
@@ -186,26 +188,35 @@ class InMemoryRateLimiterMiddleware(BaseHTTPMiddleware):
         return f"ip_{client_host}"
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        # Exempt health check and docs from rate limits
-        if request.url.path in ("/health", "/docs", "/redoc", "/openapi.json"):
+        # Exempt health check, docs, and CORS preflight from rate limits
+        if request.method == "OPTIONS" or request.url.path in (
+            "/health",
+            "/docs",
+            "/redoc",
+            "/openapi.json",
+        ):
             return await call_next(request)
 
-        client_id = self._get_client_id(request)
+        # Allow higher burst for read-only GET/HEAD dashboard/metadata requests
+        is_read_only = request.method in ("GET", "HEAD")
+        effective_limit = self.default_limit * 5 if is_read_only else self.default_limit
+        bucket_key = f"{'read' if is_read_only else 'write'}:{self._get_client_id(request)}"
+
         now = time.time()
         window_start = now - 60.0
 
-        timestamps = self.request_records[client_id]
+        timestamps = self.request_records[bucket_key]
         # Filter timestamps within the 60-second window
         active_timestamps = [t for t in timestamps if t > window_start]
-        self.request_records[client_id] = active_timestamps
+        self.request_records[bucket_key] = active_timestamps
 
-        if len(active_timestamps) >= self.default_limit:
+        if len(active_timestamps) >= effective_limit:
             return JSONResponse(
                 status_code=429,
                 content={
                     "error": {
                         "code": "RATE_LIMIT_EXCEEDED",
-                        "message": f"Rate limit of {self.default_limit} requests/minute exceeded.",
+                        "message": f"Rate limit of {effective_limit} requests/minute exceeded. Please wait a moment.",
                     }
                 },
             )

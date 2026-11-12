@@ -5,7 +5,14 @@ These protocols define contracts implemented by the infrastructure adapters.
 
 from typing import Any, Protocol, runtime_checkable
 
-from vocara.domain.entities import ApiKey, Job, UsageRecord, Voice, WebhookSubscription
+from vocara.domain.entities import (
+    ApiKey,
+    Job,
+    UsageRecord,
+    User,
+    Voice,
+    WebhookSubscription,
+)
 from vocara.domain.enums import AudioFormat, JobStatus
 
 
@@ -47,7 +54,9 @@ class ApiKeyRepository(Protocol):
     async def get_by_id(self, key_id: str) -> ApiKey | None: ...
     async def list_by_owner(self, owner_id: str) -> list[ApiKey]: ...
     async def create(self, api_key: ApiKey) -> ApiKey: ...
+    async def update_name(self, key_id: str, name: str) -> ApiKey | None: ...
     async def revoke(self, key_id: str) -> bool: ...
+    async def delete(self, key_id: str) -> bool: ...
     async def increment_usage(self, key_id: str, characters: int) -> None: ...
 
 
@@ -57,6 +66,9 @@ class UsageRepository(Protocol):
 
     async def record_usage(self, record: UsageRecord) -> None: ...
     async def get_monthly_usage(self, owner_id: str, year: int, month: int) -> int: ...
+    async def get_monthly_analytics(
+        self, owner_id: str, year: int, month: int, tz_offset_minutes: int = 0
+    ) -> dict[str, Any]: ...
 
 
 @runtime_checkable
@@ -111,6 +123,17 @@ class InferenceEngine(Protocol):
     ) -> tuple[str, bytes]:
         """Create a voice variation and return (derived_features_token, preview_audio_bytes)."""
         ...
+
+
+@runtime_checkable
+class UserRepository(Protocol):
+    """Storage port for authenticated user accounts."""
+
+    async def get_by_id(self, user_id: str) -> User | None: ...
+    async def get_by_email(self, email: str) -> User | None: ...
+    async def get_by_google_sub(self, google_sub: str) -> User | None: ...
+    async def create(self, user: User) -> User: ...
+    async def update(self, user: User) -> User: ...
 
 
 @runtime_checkable

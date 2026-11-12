@@ -69,6 +69,20 @@ class AuthService:
 
         return key_entity
 
+    async def update_key_name(self, owner_id: str, key_id: str, name: str) -> ApiKey:
+        """Rename an API key belonging to owner."""
+        key_entity = await self.api_key_repo.get_by_id(key_id)
+        if not key_entity:
+            raise EntityNotFoundError("API key not found")
+
+        if key_entity.owner_id != owner_id:
+            raise AuthorizationError("You do not have permission to update this key.")
+
+        updated = await self.api_key_repo.update_name(key_id, name.strip())
+        if not updated:
+            raise EntityNotFoundError("API key not found")
+        return updated
+
     async def revoke_key(self, owner_id: str, key_id: str) -> bool:
         """Revoke an API key belonging to owner."""
         key_entity = await self.api_key_repo.get_by_id(key_id)
@@ -79,6 +93,17 @@ class AuthService:
             raise AuthorizationError("You do not have permission to revoke this key.")
 
         return await self.api_key_repo.revoke(key_id)
+
+    async def delete_key(self, owner_id: str, key_id: str) -> bool:
+        """Permanently delete an API key belonging to owner."""
+        key_entity = await self.api_key_repo.get_by_id(key_id)
+        if not key_entity:
+            raise EntityNotFoundError("API key not found")
+
+        if key_entity.owner_id != owner_id:
+            raise AuthorizationError("You do not have permission to delete this key.")
+
+        return await self.api_key_repo.delete(key_id)
 
     async def list_keys(self, owner_id: str) -> list[ApiKey]:
         """List all API keys for developer account."""

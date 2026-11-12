@@ -105,3 +105,19 @@ class WebhookSubscription:
     event_types: list[str]
     is_active: bool = True
     created_at: datetime = field(default_factory=datetime.utcnow)
+
+
+@dataclass
+class User:
+    """Authenticated platform user account."""
+
+    id: str
+    email: str
+    name: str
+    avatar_url: str | None = None
+    password_hash: str | None = None
+    google_sub: str | None = None
+    plan: str = "free"
+    is_active: bool = True
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    updated_at: datetime = field(default_factory=datetime.utcnow)

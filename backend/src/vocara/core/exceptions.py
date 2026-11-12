@@ -103,3 +103,11 @@ class InvalidWebhookUrlError(VocaraError):
         self, message: str = "Webhook URL must begin with 'http://' or 'https://'."
     ) -> None:
         super().__init__(message, code="INVALID_URL")
+
+
+class ValidationError(VocaraError):
+    """Raised when domain input validation fails."""
+
+    def __init__(self, message: str, field: str | None = None) -> None:
+        super().__init__(message, code="VALIDATION_ERROR")
+        self.field = field

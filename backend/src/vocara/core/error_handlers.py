@@ -15,6 +15,7 @@ from vocara.core.exceptions import (
     InvalidWebhookUrlError,
     QuotaExceededError,
     RateLimitExceededError,
+    ValidationError,
     VocaraError,
 )
 
@@ -46,6 +47,24 @@ def register_error_handlers(app: FastAPI) -> None:
                     "message": "Input validation failed. Please check the entered fields.",
                     "fields": formatted_errors,
                 },
+            },
+        )
+
+    @app.exception_handler(ValidationError)
+    async def handle_domain_validation(_: Request, exc: ValidationError) -> JSONResponse:
+        fields = (
+            [{"field": exc.field, "message": exc.message, "type": "validation_error"}]
+            if exc.field
+            else []
+        )
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            content={
+                "error": {
+                    "code": exc.code,
+                    "message": exc.message,
+                    "fields": fields,
+                }
             },
         )
 

@@ -68,6 +68,8 @@ class ModalInferenceEngine(BaseInferenceEngine):
     ) -> str:
         """Condense user descriptions into concise ASCII VoxCPM 2 cues (prevents speaking prompt text aloud)."""
         mods = modifiers or {}
+        if mods.get("use_original_model_voice"):
+            return ""
         explicit = str(mods.get("control_instruction") or "").strip().strip("()")
         if explicit:
             ascii_explicit = re.sub(r"[^\x20-\x7E]+", " ", explicit)
@@ -152,6 +154,8 @@ class ModalInferenceEngine(BaseInferenceEngine):
                 if voice.preview_audio_key and voice.id in voice.preview_audio_key
                 else (voice.reference_audio_key or voice.preview_audio_key)
             )
+        elif voice.voice_type == VoiceType.BUILT_IN:
+            effective_ref_key = voice.reference_audio_key
         else:
             effective_ref_key = voice.reference_audio_key or voice.preview_audio_key
 

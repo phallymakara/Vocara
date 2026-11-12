@@ -1,11 +1,10 @@
-import React, { useState } from "react";
-import { Copy, Check, Trash2, Plus, ShieldAlert, Loader2, Cpu } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import { Copy, Check, Trash2, Plus, ShieldAlert, Loader2, MoreVertical, Edit2, Ban } from "lucide-react";
 import { useKeyController } from "@/controllers/useKeyController";
+import { useWebhookController } from "@/controllers/useWebhookController";
 import { Button } from "@/views/components/ui/button";
 import { Input } from "@/views/components/ui/input";
 import { Label } from "@/views/components/ui/label";
-import { Badge } from "@/views/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/views/components/ui/card";
 import {
   Table,
   TableBody,
@@ -23,34 +22,99 @@ import {
   DialogFooter,
 } from "@/views/components/ui/dialog";
 
+import type { ApiKeyItem } from "@/models/types";
+
 export const ApiKeysPage: React.FC = () => {
   const {
     keys,
+    savedSecrets,
+    copiedKeyId,
     isLoading,
+    isCreating,
+    isCreateModalOpen,
+    openCreateModal,
+    closeCreateModal,
     newKeyName,
     setNewKeyName,
     createdKey,
     copied,
     activeKeyInput,
-    setActiveKeyInput,
     nameError,
     generalError,
-    saveSuccessMessage,
+    editingKey,
+    editKeyName,
+    setEditKeyName,
+    isUpdatingKey,
+    editNameError,
+    openEditModal,
+    closeEditModal,
+    submitEditKey,
+    deleteConfirmKey,
+    isDeletingKey,
+    openDeleteConfirm,
+    closeDeleteConfirm,
+    submitDeleteKey,
     createKey,
     revokeKey,
-    saveActiveKey,
+    copyKeyById,
     copyToClipboard,
     closeCreatedModal,
   } = useKeyController();
 
+  const {
+    webhooks,
+    isLoadingWebhooks,
+    targetUrl,
+    setTargetUrl,
+    selectedEvents,
+    toggleEvent,
+    urlError,
+    webhookError,
+    createWebhook,
+    deleteWebhook,
+  } = useWebhookController();
+
   const [selectedMcpTab, setSelectedMcpTab] = useState<"cursor" | "claude" | "python" | "typescript">("cursor");
+  const [copiedEndpoint, setCopiedEndpoint] = useState(false);
   const [copiedSnippet, setCopiedSnippet] = useState(false);
+  const [openMenu, setOpenMenu] = useState<{
+    key: ApiKeyItem;
+    top: number;
+    right: number;
+  } | null>(null);
+  const actionMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!openMenu) return;
+    const handleOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.closest("[data-key-menu-trigger='true']")) return;
+      if (actionMenuRef.current && !actionMenuRef.current.contains(target)) {
+        setOpenMenu(null);
+      }
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpenMenu(null);
+    };
+    const handleScrollOrResize = () => setOpenMenu(null);
+    document.addEventListener("mousedown", handleOutside);
+    document.addEventListener("keydown", handleEscape);
+    window.addEventListener("resize", handleScrollOrResize);
+    window.addEventListener("scroll", handleScrollOrResize, true);
+    return () => {
+      document.removeEventListener("mousedown", handleOutside);
+      document.removeEventListener("keydown", handleEscape);
+      window.removeEventListener("resize", handleScrollOrResize);
+      window.removeEventListener("scroll", handleScrollOrResize, true);
+    };
+  }, [openMenu]);
 
   const baseUrl =
     (import.meta.env.VITE_MCP_BASE_URL as string | undefined)?.replace(/\/+$/, "") ||
     (typeof window !== "undefined" ? window.location.origin : "");
 
-  const effectiveKey = activeKeyInput?.trim() || "voc_YOUR_API_KEY";
+  const trimmedActiveKey = activeKeyInput?.trim() || "";
+  const effectiveKey = trimmedActiveKey.startsWith("voc_") ? trimmedActiveKey : "voc_YOUR_API_KEY";
   const sseEndpointUrl = `${baseUrl}/mcp/sse?api_key=${effectiveKey}`;
 
   const snippetMap = {
@@ -131,258 +195,476 @@ main().catch(console.error);`,
     setTimeout(() => setCopiedSnippet(false), 2000);
   };
 
+  const toggleRowMenu = (event: React.MouseEvent<HTMLButtonElement>, keyItem: ApiKeyItem) => {
+    if (openMenu?.key.id === keyItem.id) {
+      setOpenMenu(null);
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    const estimatedMenuHeight = 176;
+    const opensUpward = rect.bottom + estimatedMenuHeight > window.innerHeight - 16;
+    setOpenMenu({
+      key: keyItem,
+      top: opensUpward ? Math.max(12, rect.top - estimatedMenuHeight) : rect.bottom + 6,
+      right: Math.max(12, window.innerWidth - rect.right),
+    });
+  };
+
   return (
-    <div className="space-y-6 max-w-5xl">
-      <div>
-        <h2 className="text-xl font-semibold tracking-tight text-foreground">
-          API Key Management
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          Create and manage bearer keys for authenticating requests to Vocara API endpoints.
-        </p>
-      </div>
+    <div className="space-y-6 max-w-5xl mx-auto">
+      {/* Keys Table */}
+      <div className="bg-white border border-[#E5EBF5] rounded-3xl p-6 md:p-8 space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <h3 className="text-base font-bold text-[#15213D] leading-tight">Issued Keys</h3>
+          <button
+            type="button"
+            onClick={openCreateModal}
+            className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-full bg-[#1264F5] hover:bg-[#0E52CC] text-xs font-semibold text-white transition-colors cursor-pointer w-full sm:w-auto"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span>Generate Key</span>
+          </button>
+        </div>
 
-      {/* Active Key Config */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Active Workspace Key</CardTitle>
-          <CardDescription>
-            This key is sent in the Authorization header when synthesizing speech or managing resources.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex flex-col sm:flex-row gap-2">
-            <div className="flex-1">
-              <Input
-                type="password"
-                placeholder="Enter or paste Vocara API secret key..."
-                value={activeKeyInput}
-                onChange={(e) => setActiveKeyInput(e.target.value)}
-                className="font-mono text-xs"
-              />
-            </div>
-            <Button onClick={saveActiveKey} variant="secondary" className="sm:w-auto">
-              Save Active Key
-            </Button>
-          </div>
-          {saveSuccessMessage && (
-            <p className="text-xs text-emerald-600 font-medium">{saveSuccessMessage}</p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Create Key Form */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Generate New API Key</CardTitle>
-          <CardDescription>
-            Name your key based on environment or service (e.g. Production Webhook, Local Dev).
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex flex-col sm:flex-row gap-2 items-start">
-            <div className="flex-1 w-full space-y-1">
-              <Input
-                placeholder="Key label or service name..."
-                value={newKeyName}
-                onChange={(e) => setNewKeyName(e.target.value)}
-                error={Boolean(nameError)}
-              />
-              {nameError && (
-                <p className="text-xs text-destructive">{nameError}</p>
-              )}
-            </div>
-            <Button onClick={createKey} className="w-full sm:w-auto">
-              <Plus className="h-4 w-4 mr-1.5" />
-              Generate Key
-            </Button>
-          </div>
-          {generalError && (
+        <div className="space-y-3">
+          {generalError && !isCreateModalOpen && (
             <p className="text-xs text-destructive">{generalError}</p>
           )}
-        </CardContent>
-      </Card>
-
-      {/* Keys Table */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Issued Keys</CardTitle>
-          <CardDescription>
-            All active credentials associated with this project.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
           {isLoading ? (
-            <div className="py-8 flex justify-center items-center text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            <div className="py-10 flex justify-center items-center text-sm text-[#64748B]">
+              <Loader2 className="h-4 w-4 animate-spin mr-2 text-[#1264F5]" />
               Loading API keys...
             </div>
           ) : keys.length === 0 ? (
-            <div className="py-8 text-center text-sm text-muted-foreground border border-dashed rounded">
-              No API keys found. Generate a key above to start using the API.
+            <div className="py-10 text-center text-sm text-[#64748B] border border-dashed border-[#E5EBF5] rounded-2xl">
+              No API keys found. Click Generate Key to create one.
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Key Name</TableHead>
-                  <TableHead>Key Prefix</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {keys.map((k) => (
-                  <TableRow key={k.id}>
-                    <TableCell className="font-medium text-sm">{k.name}</TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">
-                      {k.key_prefix}...
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {new Date(k.created_at).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="text-[11px] text-emerald-600 border-emerald-300">
-                        Active
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => revokeKey(k.id)}
-                        className="h-8 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
-                      >
-                        <Trash2 className="h-3.5 w-3.5 mr-1" />
-                        Revoke
-                      </Button>
-                    </TableCell>
+            <div className="overflow-x-auto rounded-2xl border border-[#E5EBF5]">
+              <Table>
+                <TableHeader className="bg-[#F8FAFC]">
+                  <TableRow className="border-[#E5EBF5] hover:bg-transparent">
+                    <TableHead className="text-xs font-semibold text-[#64748B]">Key Name</TableHead>
+                    <TableHead className="text-xs font-semibold text-[#64748B]">Key Prefix</TableHead>
+                    <TableHead className="text-xs font-semibold text-[#64748B]">Created</TableHead>
+                    <TableHead className="text-xs font-semibold text-[#64748B]">Status</TableHead>
+                    <TableHead className="text-right text-xs font-semibold text-[#64748B]">Action</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {keys.map((k) => {
+                    const isActive = k.status === "active";
+                    const hasSavedSecret = Boolean(savedSecrets[k.id]);
+                    const isRowCopied = copiedKeyId === k.id;
+                    return (
+                      <TableRow key={k.id} className="border-[#E5EBF5] hover:bg-[#F8FAFC]/60">
+                        <TableCell className="font-medium text-sm text-[#15213D]">{k.name}</TableCell>
+                        <TableCell className="font-mono text-xs text-[#64748B]">
+                          <div className="inline-flex items-center gap-2">
+                            <span>{k.key_prefix}...</span>
+                            {hasSavedSecret && (
+                              <button
+                                type="button"
+                                onClick={() => copyKeyById(k)}
+                                title="Copy full API key"
+                                aria-label={`Copy ${k.name} API key`}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-[#E5EBF5] bg-white hover:bg-[#F8FAFC] hover:border-[#1264F5]/40 text-[11px] font-sans font-medium text-[#64748B] hover:text-[#15213D] transition-colors cursor-pointer"
+                              >
+                                {isRowCopied ? (
+                                  <>
+                                    <Check className="h-3 w-3 text-emerald-600" />
+                                    <span className="text-emerald-600">Copied</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="h-3 w-3" />
+                                    <span>Copy</span>
+                                  </>
+                                )}
+                              </button>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-xs text-[#64748B]">
+                          {new Date(k.created_at).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell>
+                          {isActive ? (
+                            <span className="text-xs font-medium text-emerald-600">
+                              Active
+                            </span>
+                          ) : (
+                            <span className="text-xs font-medium text-[#64748B]">
+                              Revoked
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <button
+                            type="button"
+                            data-key-menu-trigger="true"
+                            onClick={(e) => toggleRowMenu(e, k)}
+                            aria-label={`Actions for ${k.name}`}
+                            aria-expanded={openMenu?.key.id === k.id}
+                            className="h-8 w-8 rounded-full inline-flex items-center justify-center text-[#64748B] hover:text-[#15213D] hover:bg-[#F8FAFC] transition-colors cursor-pointer"
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                          </button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
+
+      {/* Anchored Three-Dot Action Menu */}
+      {openMenu && (
+        <div
+          ref={actionMenuRef}
+          role="menu"
+          style={{ top: `${openMenu.top}px`, right: `${openMenu.right}px` }}
+          className="fixed z-50 w-44 rounded-2xl border border-[#E5EBF5] bg-white p-1.5 space-y-0.5"
+        >
+          {savedSecrets[openMenu.key.id] && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                copyKeyById(openMenu.key);
+                setOpenMenu(null);
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium text-[#15213D] hover:bg-[#F8FAFC] transition-colors cursor-pointer text-left"
+            >
+              <Copy className="h-3.5 w-3.5 text-[#64748B]" />
+              <span>Copy Key</span>
+            </button>
+          )}
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              openEditModal(openMenu.key);
+              setOpenMenu(null);
+            }}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium text-[#15213D] hover:bg-[#F8FAFC] transition-colors cursor-pointer text-left"
+          >
+            <Edit2 className="h-3.5 w-3.5 text-[#64748B]" />
+            <span>Edit Name</span>
+          </button>
+          {openMenu.key.status === "active" && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                const target = openMenu.key;
+                setOpenMenu(null);
+                revokeKey(target);
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium text-[#15213D] hover:bg-[#F8FAFC] transition-colors cursor-pointer text-left"
+            >
+              <Ban className="h-3.5 w-3.5 text-[#64748B]" />
+              <span>Revoke Key</span>
+            </button>
+          )}
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              openDeleteConfirm(openMenu.key);
+              setOpenMenu(null);
+            }}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium text-destructive hover:bg-destructive/5 transition-colors cursor-pointer text-left"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            <span>Delete Key</span>
+          </button>
+        </div>
+      )}
 
       {/* Model Context Protocol (MCP) Integration */}
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Cpu className="h-4 w-4 text-primary" />
-                Model Context Protocol (MCP) Integration
-              </CardTitle>
-              <CardDescription>
-                Allow external developers, Cursor IDE, Claude Desktop, and AI agents to discover voices and synthesize speech.
-              </CardDescription>
-            </div>
-            <Badge variant="outline" className="w-fit text-[11px] font-mono">
-              mcp://vocara-voices
-            </Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <div className="bg-white border border-[#E5EBF5] rounded-3xl p-6 md:p-8 space-y-5">
+        <h3 className="text-base font-bold text-[#15213D] leading-tight">
+          Model Context Protocol (MCP) Integration
+        </h3>
+
+        <div className="space-y-5">
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground font-normal">Remote SSE Endpoint</Label>
+            <label htmlFor="mcp-sse-endpoint" className="text-xs font-semibold text-[#15213D] block">
+              Remote SSE Endpoint
+            </label>
             <div className="flex gap-2">
-              <Input
+              <input
+                id="mcp-sse-endpoint"
                 readOnly
                 value={sseEndpointUrl}
-                className="font-mono text-xs select-all bg-muted/30"
+                className="flex-1 h-10 px-3.5 bg-white border border-[#E5EBF5] rounded-xl font-mono text-xs text-[#374151] select-all focus:outline-none focus:border-[#1264F5]"
               />
-              <Button
-                variant="outline"
-                size="sm"
+              <button
+                type="button"
                 onClick={() => {
                   navigator.clipboard.writeText(sseEndpointUrl);
-                  setCopiedSnippet(true);
-                  setTimeout(() => setCopiedSnippet(false), 2000);
+                  setCopiedEndpoint(true);
+                  setTimeout(() => setCopiedEndpoint(false), 2000);
                 }}
-                className="flex-shrink-0"
+                aria-label="Copy Remote SSE Endpoint"
+                title="Copy Remote SSE Endpoint"
+                className="h-10 w-10 rounded-xl border border-[#E5EBF5] bg-white hover:bg-[#F8FAFC] hover:border-[#1264F5]/40 text-[#64748B] hover:text-[#15213D] inline-flex items-center justify-center flex-shrink-0 transition-colors cursor-pointer"
               >
-                {copiedSnippet ? (
+                {copiedEndpoint ? (
                   <Check className="h-4 w-4 text-emerald-600" />
                 ) : (
                   <Copy className="h-4 w-4" />
                 )}
-              </Button>
+              </button>
             </div>
           </div>
 
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex gap-1.5">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2.5">
+              <div className="flex flex-wrap items-center gap-2">
                 {[
                   { id: "cursor" as const, label: "Cursor IDE" },
                   { id: "claude" as const, label: "Claude Desktop" },
                   { id: "python" as const, label: "Python SDK" },
                   { id: "typescript" as const, label: "TypeScript" },
-                ].map((tab) => (
-                  <Button
-                    key={tab.id}
-                    variant={selectedMcpTab === tab.id ? "secondary" : "ghost"}
-                    size="sm"
-                    className="h-7 text-xs font-medium"
-                    onClick={() => setSelectedMcpTab(tab.id)}
-                  >
-                    {tab.label}
-                  </Button>
-                ))}
+                ].map((tab) => {
+                  const isActive = selectedMcpTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setSelectedMcpTab(tab.id)}
+                      className={`h-8 px-3.5 rounded-full border text-xs transition-colors cursor-pointer ${
+                        isActive
+                          ? "border-[#1264F5] bg-[#1264F5] hover:bg-[#0E52CC] text-white font-semibold"
+                          : "border-[#E5EBF5] bg-white text-[#64748B] font-medium hover:text-[#15213D] hover:bg-[#F8FAFC]"
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                })}
               </div>
 
-              <Button
-                variant="outline"
-                size="sm"
+              <button
+                type="button"
                 onClick={copySnippet}
-                className="h-7 text-xs gap-1.5"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[#E5EBF5] bg-white text-xs font-medium text-[#64748B] hover:text-[#15213D] hover:bg-[#F8FAFC] transition-colors cursor-pointer"
               >
                 {copiedSnippet ? (
                   <>
-                    <Check className="h-3 w-3 text-emerald-600" />
-                    <span>Copied</span>
+                    <Check className="h-3.5 w-3.5 text-emerald-600" />
+                    <span className="text-emerald-600">Copied</span>
                   </>
                 ) : (
                   <>
-                    <Copy className="h-3 w-3" />
+                    <Copy className="h-3.5 w-3.5" />
                     <span>Copy Config</span>
                   </>
                 )}
-              </Button>
+              </button>
             </div>
 
             <div className="relative">
-              <pre className="p-3 bg-muted/40 rounded border border-border text-xs font-mono overflow-x-auto text-foreground whitespace-pre leading-relaxed">
+              <pre className="p-4 bg-white rounded-2xl border border-[#E5EBF5] text-xs font-mono overflow-x-auto text-[#374151] whitespace-pre leading-relaxed">
                 {snippetMap[selectedMcpTab]}
               </pre>
             </div>
           </div>
+        </div>
+      </div>
 
-          <div className="pt-2 border-t border-border">
-            <p className="text-[11px] text-muted-foreground font-medium mb-1.5">Exposed MCP Capabilities:</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-muted-foreground font-mono">
-              <div className="p-2 rounded bg-muted/20 border border-border/60">
-                <span className="text-foreground font-semibold">vocara_list_voices</span>
-                <p className="text-[11px] font-sans mt-0.5">Filter voices by language (km, en) and voice type.</p>
-              </div>
-              <div className="p-2 rounded bg-muted/20 border border-border/60">
-                <span className="text-foreground font-semibold">vocara_get_voice_details</span>
-                <p className="text-[11px] font-sans mt-0.5">Inspect acoustic parameters (pitch, speed, emotion).</p>
-              </div>
-              <div className="p-2 rounded bg-muted/20 border border-border/60">
-                <span className="text-foreground font-semibold">vocara_preview_voice</span>
-                <p className="text-[11px] font-sans mt-0.5">Listen to voice audio sample before synthesizing.</p>
-              </div>
-              <div className="p-2 rounded bg-muted/20 border border-border/60">
-                <span className="text-foreground font-semibold">vocara_generate_speech</span>
-                <p className="text-[11px] font-sans mt-0.5">Synthesize text into WAV/MP3 speech.</p>
-              </div>
+      {/* Register Webhook Endpoint */}
+      <div className="bg-white border border-[#E5EBF5] rounded-3xl p-6 md:p-8 space-y-5">
+        <h3 className="text-base font-bold text-[#15213D] leading-tight">
+          Register Webhook Endpoint
+        </h3>
+
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <label htmlFor="webhook-url" className="text-xs font-semibold text-[#15213D] block">
+              Target URL
+            </label>
+            <input
+              id="webhook-url"
+              type="text"
+              placeholder="Enter webhook endpoint URL..."
+              value={targetUrl}
+              onChange={(e) => setTargetUrl(e.target.value)}
+              className={`w-full h-10 px-3.5 bg-white border rounded-xl text-sm text-[#15213D] placeholder:text-[#94A3B8] focus:outline-none focus:border-[#1264F5] ${
+                urlError ? "border-destructive" : "border-[#E5EBF5]"
+              }`}
+            />
+            {urlError && <p className="text-xs text-destructive mt-1">{urlError}</p>}
+          </div>
+
+          <div className="space-y-2">
+            <span className="text-xs font-semibold text-[#15213D] block">
+              Subscribed Event Types
+            </span>
+            <div className="flex flex-wrap gap-4 pt-0.5">
+              {[
+                { id: "job.completed", label: "job.completed (Audio Ready)" },
+                { id: "job.failed", label: "job.failed (Synthesis Error)" },
+              ].map((ev) => (
+                <label
+                  key={ev.id}
+                  className="flex items-center gap-2 text-xs text-[#15213D] cursor-pointer select-none"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedEvents.includes(ev.id)}
+                    onChange={() => toggleEvent(ev.id)}
+                    className="h-4 w-4 rounded border-[#E5EBF5] text-[#1264F5] focus:ring-[#1264F5]"
+                  />
+                  <span>{ev.label}</span>
+                </label>
+              ))}
             </div>
           </div>
-        </CardContent>
-      </Card>
+
+          {webhookError && <p className="text-xs text-destructive">{webhookError}</p>}
+
+          <button
+            type="button"
+            onClick={createWebhook}
+            className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-full bg-[#1264F5] hover:bg-[#0E52CC] text-xs font-semibold text-white transition-colors cursor-pointer"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span>Add Webhook Endpoint</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Active Webhook Subscriptions */}
+      <div className="bg-white border border-[#E5EBF5] rounded-3xl p-6 md:p-8 space-y-5">
+        <h3 className="text-base font-bold text-[#15213D] leading-tight">
+          Active Subscriptions
+        </h3>
+
+        <div>
+          {isLoadingWebhooks ? (
+            <div className="py-10 flex justify-center items-center text-sm text-[#64748B]">
+              <Loader2 className="h-4 w-4 animate-spin mr-2 text-[#1264F5]" />
+              Loading webhooks...
+            </div>
+          ) : webhooks.length === 0 ? (
+            <div className="py-10 text-center text-sm text-[#64748B]">
+              No webhook subscriptions registered.
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-2xl border border-[#E5EBF5]">
+              <Table>
+                <TableHeader className="bg-[#F8FAFC]">
+                  <TableRow className="border-[#E5EBF5] hover:bg-transparent">
+                    <TableHead className="text-xs font-semibold text-[#64748B]">Target URL</TableHead>
+                    <TableHead className="text-xs font-semibold text-[#64748B]">Events</TableHead>
+                    <TableHead className="text-xs font-semibold text-[#64748B]">Created</TableHead>
+                    <TableHead className="text-right text-xs font-semibold text-[#64748B]">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {webhooks.map((sub) => (
+                    <TableRow key={sub.id} className="border-[#E5EBF5] hover:bg-[#F8FAFC]/60">
+                      <TableCell className="font-mono text-xs font-medium text-[#374151]">
+                        {sub.url}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1.5">
+                          {(sub.event_types || []).map((e) => (
+                            <span
+                              key={e}
+                              className="inline-flex items-center rounded-full border border-[#E5EBF5] bg-white px-2.5 py-0.5 text-[11px] font-medium text-[#64748B]"
+                            >
+                              {e}
+                            </span>
+                          ))}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-xs text-[#64748B]">
+                        {new Date(sub.created_at).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <button
+                          type="button"
+                          onClick={() => deleteWebhook(sub.id)}
+                          className="inline-flex items-center gap-1 h-8 px-3 rounded-full text-xs font-medium text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          <span>Delete</span>
+                        </button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Generate Key Modal */}
+      <Dialog open={isCreateModalOpen} onOpenChange={(open) => !open && closeCreateModal()}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Generate New API Key</DialogTitle>
+          </DialogHeader>
+
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              await createKey();
+            }}
+            className="space-y-4 pt-1"
+          >
+            <div className="space-y-1.5">
+              <Label htmlFor="new-api-key-name">Key Name</Label>
+              <Input
+                id="new-api-key-name"
+                placeholder="Key label or service name..."
+                value={newKeyName}
+                onChange={(e) => setNewKeyName(e.target.value)}
+                error={Boolean(nameError)}
+                autoFocus
+              />
+              {nameError && (
+                <p className="text-xs text-destructive">{nameError}</p>
+              )}
+              {generalError && (
+                <p className="text-xs text-destructive">{generalError}</p>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={closeCreateModal}
+                disabled={isCreating}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isCreating}>
+                {isCreating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="h-4 w-4 mr-1.5" />
+                    Generate Key
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Secret Key Revealed Dialog */}
       <Dialog open={Boolean(createdKey)} onOpenChange={(open) => !open && closeCreatedModal()}>
@@ -427,6 +709,96 @@ main().catch(console.error);`,
 
           <DialogFooter>
             <Button onClick={closeCreatedModal}>I Have Saved This Key</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Key Name Dialog */}
+      <Dialog open={Boolean(editingKey)} onOpenChange={(open) => !open && closeEditModal()}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit API Key Name</DialogTitle>
+          </DialogHeader>
+
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              await submitEditKey();
+            }}
+            className="space-y-4 pt-1"
+          >
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-api-key-name">Key Name</Label>
+              <Input
+                id="edit-api-key-name"
+                value={editKeyName}
+                onChange={(e) => setEditKeyName(e.target.value)}
+                error={Boolean(editNameError)}
+                autoFocus
+              />
+              {editNameError && (
+                <p className="text-xs text-destructive">{editNameError}</p>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={closeEditModal}
+                disabled={isUpdatingKey}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isUpdatingKey}>
+                {isUpdatingKey ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  "Save Name"
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Key Confirmation Dialog */}
+      <Dialog open={Boolean(deleteConfirmKey)} onOpenChange={(open) => !open && closeDeleteConfirm()}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>Delete API Key</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to permanently delete &ldquo;{deleteConfirmKey?.name}&rdquo;? Any applications using this key will stop working immediately.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter className="mt-4">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={closeDeleteConfirm}
+              disabled={isDeletingKey}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={submitDeleteKey}
+              disabled={isDeletingKey}
+            >
+              {isDeletingKey ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete Key"
+              )}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

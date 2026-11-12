@@ -50,7 +50,32 @@ async def test_keys_api_full_flow(async_client: AsyncClient) -> None:
     assert usage_data["characters_used"] == 0
     assert usage_data["total_quota"] == 50000
 
-    # 5. Revoke key
+    # 5. Update key name
+    patch_resp = await async_client.patch(
+        f"/api/v1/keys/{key_id}",
+        json={"name": "Renamed Integration Key"},
+        headers={"Authorization": f"Bearer {raw_api_key}"},
+    )
+    assert patch_resp.status_code == 200
+    assert patch_resp.json()["name"] == "Renamed Integration Key"
+
+    # 6. Create a second key so we can test permanent delete cleanly
+    second_resp = await async_client.post(
+        "/api/v1/keys",
+        json={"name": "Secondary Key", "is_live": True},
+        headers={"Authorization": f"Bearer {raw_api_key}"},
+    )
+    assert second_resp.status_code == 201
+    second_id = second_resp.json()["id"]
+
+    delete_resp = await async_client.delete(
+        f"/api/v1/keys/{second_id}?permanent=true",
+        headers={"Authorization": f"Bearer {raw_api_key}"},
+    )
+    assert delete_resp.status_code == 200
+    assert delete_resp.json()["status"] == "deleted"
+
+    # 7. Revoke key
     revoke_resp = await async_client.delete(
         f"/api/v1/keys/{key_id}",
         headers={"Authorization": f"Bearer {raw_api_key}"},
@@ -58,7 +83,7 @@ async def test_keys_api_full_flow(async_client: AsyncClient) -> None:
     assert revoke_resp.status_code == 200
     assert revoke_resp.json()["status"] == "revoked"
 
-    # 6. Once revoked, authenticating with this key returns 401
+    # 8. Once revoked, authenticating with this key returns 401
     revoked_lookup = await async_client.get(
         "/api/v1/keys",
         headers={"Authorization": f"Bearer {raw_api_key}"},

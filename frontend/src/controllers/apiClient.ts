@@ -6,18 +6,21 @@
 import type {
   ApiKeyCreated,
   ApiKeyItem,
+  AuthSessionResponse,
   DesignPreviewResponse,
   JobItem,
   SystemAudioFormat,
   SystemLanguage,
   TtsRequestPayload,
   UsageSummary,
+  UserProfile,
   VoiceItem,
   WebhookSubscription,
 } from "@/models/types";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
 const API_KEY_STORAGE_KEY = "vocara_active_api_key";
+const AUTH_TOKEN_STORAGE_KEY = "vocara_session_token";
 
 export class ApiError extends Error {
   constructor(
@@ -32,9 +35,11 @@ export class ApiError extends Error {
 
 class VocaraApiClient {
   private activeApiKey: string | null = null;
+  private authToken: string | null = null;
 
   constructor() {
     this.activeApiKey = localStorage.getItem(API_KEY_STORAGE_KEY);
+    this.authToken = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
   }
 
   getApiKey(): string | null {
@@ -50,9 +55,24 @@ class VocaraApiClient {
     }
   }
 
+  getAuthToken(): string | null {
+    return this.authToken;
+  }
+
+  setAuthToken(token: string | null): void {
+    this.authToken = token;
+    if (token) {
+      localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
+    } else {
+      localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+    }
+  }
+
   private getHeaders(extraHeaders: Record<string, string> = {}): Record<string, string> {
     const headers: Record<string, string> = { ...extraHeaders };
-    if (this.activeApiKey) {
+    if (this.authToken) {
+      headers["Authorization"] = `Bearer ${this.authToken}`;
+    } else if (this.activeApiKey) {
       headers["Authorization"] = `Bearer ${this.activeApiKey}`;
     }
     return headers;
@@ -72,8 +92,17 @@ class VocaraApiClient {
               fieldErrors[String(field)] = item.msg || "Invalid value";
             }
             errorMessage = "Please check the entered values.";
-          } else if (data.error && typeof data.error === "object" && data.error.message) {
-            errorMessage = data.error.message;
+          } else if (data.error && typeof data.error === "object") {
+            if (Array.isArray(data.error.fields)) {
+              for (const f of data.error.fields) {
+                if (f.field && f.message) {
+                  fieldErrors[String(f.field)] = String(f.message);
+                }
+              }
+            }
+            if (data.error.message) {
+              errorMessage = data.error.message;
+            }
           } else if (typeof data.detail === "string") {
             if (data.detail.toLowerCase() === "not found") {
               errorMessage = "The requested service is currently unavailable or could not be found.";
@@ -89,13 +118,20 @@ class VocaraApiClient {
       }
 
       if (res.status === 401) {
-        this.setApiKey(null);
-        errorMessage = "Please set an active API key to access this feature.";
+        if (this.authToken) {
+          this.setAuthToken(null);
+          window.dispatchEvent(new CustomEvent("vocara:unauthorized"));
+        } else {
+          this.setApiKey(null);
+        }
+        if (errorMessage === "An unexpected error occurred. Please try again.") {
+          errorMessage = "Please sign in to continue.";
+        }
       } else if (res.status === 403) {
         errorMessage = "You do not have access to this resource.";
       } else if (res.status === 404 && errorMessage === "An unexpected error occurred. Please try again.") {
         errorMessage = "The requested service is currently unavailable.";
-      } else if (res.status === 429) {
+      } else if (res.status === 429 && errorMessage === "An unexpected error occurred. Please try again.") {
         errorMessage = "Monthly quota or rate limit reached. Please wait a moment.";
       }
 
@@ -103,6 +139,35 @@ class VocaraApiClient {
     }
 
     return (await res.json()) as T;
+  }
+
+  async registerUser(name: string, email: string, password: string): Promise<AuthSessionResponse> {
+    const res = await fetch(`${BASE_URL}/auth/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, email, password }),
+    });
+    return this.handleResponse<AuthSessionResponse>(res);
+  }
+
+  async loginUser(email: string, password: string): Promise<AuthSessionResponse> {
+    const res = await fetch(`${BASE_URL}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    return this.handleResponse<AuthSessionResponse>(res);
+  }
+
+  async getCurrentUser(): Promise<UserProfile> {
+    const res = await fetch(`${BASE_URL}/auth/me`, {
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<UserProfile>(res);
+  }
+
+  getGoogleLoginUrl(): string {
+    return `${BASE_URL}/auth/google/login`;
   }
 
   async getHealth(): Promise<{ status: string; service: string; environment: string }> {
@@ -140,8 +205,27 @@ class VocaraApiClient {
     return this.handleResponse<ApiKeyCreated>(res);
   }
 
-  async revokeKey(id: string): Promise<void> {
+  async updateKeyName(id: string, name: string): Promise<ApiKeyItem> {
     const res = await fetch(`${BASE_URL}/keys/${id}`, {
+      method: "PATCH",
+      headers: this.getHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ name }),
+    });
+    return this.handleResponse<ApiKeyItem>(res);
+  }
+
+  async revokeKey(id: string): Promise<void> {
+    const res = await fetch(`${BASE_URL}/keys/${id}/revoke`, {
+      method: "POST",
+      headers: this.getHeaders(),
+    });
+    if (!res.ok) {
+      await this.handleResponse(res);
+    }
+  }
+
+  async deleteKey(id: string): Promise<void> {
+    const res = await fetch(`${BASE_URL}/keys/${id}?permanent=true`, {
       method: "DELETE",
       headers: this.getHeaders(),
     });
@@ -237,8 +321,9 @@ class VocaraApiClient {
   getVoicePreviewUrl(voiceId: string): string {
     const url = `${BASE_URL}/voices/${voiceId}/preview`;
     const params = new URLSearchParams();
-    if (this.activeApiKey) {
-      params.set("api_key", this.activeApiKey);
+    const credential = this.authToken || this.activeApiKey;
+    if (credential) {
+      params.set("api_key", credential);
     }
     params.set("t", String(Date.now()));
     return `${url}?${params.toString()}`;
@@ -289,8 +374,13 @@ class VocaraApiClient {
     return await res.blob();
   }
 
-  async getUsage(): Promise<UsageSummary> {
-    const res = await fetch(`${BASE_URL}/usage`, {
+  async getUsage(year?: number, month?: number): Promise<UsageSummary> {
+    const params = new URLSearchParams();
+    if (year !== undefined) params.set("year", String(year));
+    if (month !== undefined) params.set("month", String(month));
+    params.set("tz_offset", String(-new Date().getTimezoneOffset()));
+    const qs = params.toString();
+    const res = await fetch(`${BASE_URL}/usage${qs ? `?${qs}` : ""}`, {
       headers: this.getHeaders(),
     });
     return this.handleResponse<UsageSummary>(res);

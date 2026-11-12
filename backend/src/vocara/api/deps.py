@@ -13,11 +13,13 @@ from vocara.container import Container
 from vocara.core.config import Settings
 from vocara.core.exceptions import AuthenticationError
 from vocara.core.logging import tenant_id_ctx, user_id_ctx
-from vocara.domain.entities import ApiKey
+from vocara.core.security import verify_access_token
+from vocara.domain.entities import ApiKey, User
 from vocara.services.auth_service import AuthService
 from vocara.services.job_service import JobService
 from vocara.services.tts_service import TtsService
 from vocara.services.usage_service import UsageService
+from vocara.services.user_auth_service import UserAuthService
 from vocara.services.voice_service import VoiceService
 from vocara.services.webhook_service import WebhookService
 
@@ -62,6 +64,14 @@ def get_auth_service(
     return container.get_auth_service(session)
 
 
+def get_user_auth_service(
+    container: Annotated[Container, Depends(get_container)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> UserAuthService:
+    """Provide UserAuthService instance scoped to active DB session."""
+    return container.get_user_auth_service(session)
+
+
 def get_usage_service(
     container: Annotated[Container, Depends(get_container)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
@@ -102,13 +112,60 @@ def get_webhook_service(
     return container.get_webhook_service(session)
 
 
+async def get_current_user(
+    request: Request,
+    auth_header: Annotated[HTTPAuthorizationCredentials | None, Security(bearer_scheme)],
+    user_auth_service: Annotated[UserAuthService, Depends(get_user_auth_service)],
+) -> User:
+    """Authenticate a user via Bearer JWT session token."""
+    settings: Settings = request.app.state.settings
+    token = auth_header.credentials.strip() if auth_header and auth_header.credentials else None
+    if not token:
+        raise AuthenticationError("Authentication required. Please log in.")
+
+    payload = verify_access_token(token, settings.SECRET_KEY)
+    if not payload or not payload.get("sub"):
+        raise AuthenticationError("Session expired or invalid. Please log in again.")
+
+    user = await user_auth_service.user_repo.get_by_id(str(payload["sub"]))
+    if not user or not user.is_active:
+        raise AuthenticationError("Account is unavailable or inactive.")
+
+    user_id_ctx.set(user.id)
+    tenant_id_ctx.set(user.id)
+    request.state.user_id = user.id
+    request.state.tenant_id = user.id
+    return user
+
+
+async def _authenticate_raw_bearer(
+    raw_token: str,
+    settings: Settings,
+    auth_service: AuthService,
+    user_auth_service: UserAuthService,
+) -> ApiKey:
+    """Authenticate either an API key (voc_live_/voc_test_) or a user JWT session."""
+    if raw_token.startswith("voc_live_") or raw_token.startswith("voc_test_"):
+        return await auth_service.authenticate_key(raw_token)
+
+    payload = verify_access_token(raw_token, settings.SECRET_KEY)
+    if payload and payload.get("sub"):
+        user = await user_auth_service.user_repo.get_by_id(str(payload["sub"]))
+        if not user or not user.is_active:
+            raise AuthenticationError("Account is unavailable or inactive.")
+        return await user_auth_service.ensure_active_api_key(user)
+
+    raise AuthenticationError("Invalid authentication credentials.")
+
+
 async def get_optional_api_key(
     request: Request,
     auth_header: Annotated[HTTPAuthorizationCredentials | None, Security(bearer_scheme)],
     api_key_header: Annotated[str | None, Security(api_key_header_scheme)],
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
+    user_auth_service: Annotated[UserAuthService, Depends(get_user_auth_service)],
 ) -> ApiKey | None:
-    """Attempt API key authentication, returning None if header is not present."""
+    """Attempt API key or JWT authentication, returning None if header is not present."""
     settings: Settings = request.app.state.settings
     raw_key: str | None = None
 
@@ -121,7 +178,9 @@ async def get_optional_api_key(
 
     if raw_key:
         try:
-            api_key = await auth_service.authenticate_key(raw_key)
+            api_key = await _authenticate_raw_bearer(
+                raw_key, settings, auth_service, user_auth_service
+            )
             user_id = api_key.owner_id or "anonymous"
             tenant_id = api_key.owner_id or "default"
             user_id_ctx.set(user_id)
@@ -151,10 +210,11 @@ async def get_current_api_key(
     auth_header: Annotated[HTTPAuthorizationCredentials | None, Security(bearer_scheme)],
     api_key_header: Annotated[str | None, Security(api_key_header_scheme)],
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
+    user_auth_service: Annotated[UserAuthService, Depends(get_user_auth_service)],
 ) -> ApiKey:
-    """Authenticate API key from Bearer token or X-API-Key header.
+    """Authenticate via API key (Bearer/X-API-Key/?api_key=) or user JWT session.
 
-    In development mode, automatically falls back to the default workspace key if omitted or invalid.
+    In development mode, falls back to the default workspace key if omitted or non-JWT.
     """
     settings: Settings = request.app.state.settings
     raw_key: str | None = None
@@ -167,8 +227,11 @@ async def get_current_api_key(
         raw_key = request.query_params["api_key"].strip()
 
     if raw_key:
+        is_jwt_shape = raw_key.count(".") == 2 and not raw_key.startswith("voc_")
         try:
-            api_key = await auth_service.authenticate_key(raw_key)
+            api_key = await _authenticate_raw_bearer(
+                raw_key, settings, auth_service, user_auth_service
+            )
             user_id = api_key.owner_id or "anonymous"
             tenant_id = api_key.owner_id or "default"
             user_id_ctx.set(user_id)
@@ -177,7 +240,7 @@ async def get_current_api_key(
             request.state.tenant_id = tenant_id
             return api_key
         except AuthenticationError:
-            if settings.ENVIRONMENT != "development":
+            if settings.ENVIRONMENT != "development" or is_jwt_shape:
                 raise
 
     if settings.ENVIRONMENT == "development":
@@ -196,6 +259,8 @@ async def get_current_api_key(
 
 
 # Convenient type annotations for route injection
+CurrentUser = Annotated[User, Depends(get_current_user)]
+UserAuthServiceDep = Annotated[UserAuthService, Depends(get_user_auth_service)]
 CurrentApiKey = Annotated[ApiKey, Depends(get_current_api_key)]
 OptionalApiKey = Annotated[ApiKey | None, Depends(get_optional_api_key)]
 SessionDep = Annotated[AsyncSession, Depends(get_db_session)]

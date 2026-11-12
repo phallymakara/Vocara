@@ -1,6 +1,6 @@
 import React from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { Mic, Users, Key, BarChart3, Radio } from "lucide-react";
+import { Mic, Users, Key, BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const Sidebar: React.FC = () => {
@@ -11,7 +11,6 @@ export const Sidebar: React.FC = () => {
     { path: "/voices", alias: "/voices", label: "Voice Library", icon: Users },
     { path: "/keys", alias: "/keys", label: "API Keys", icon: Key },
     { path: "/usage", alias: "/usage", label: "Usage & Quota", icon: BarChart3 },
-    { path: "/jobs", alias: "/webhooks", label: "Jobs & Webhooks", icon: Radio },
   ];
 
   const isItemActive = (path: string, alias: string) => {

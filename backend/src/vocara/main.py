@@ -79,7 +79,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     cors_origins = (
         ["*"]
         if (cfg.DEBUG and "*" in cfg.CORS_ORIGINS)
-        else (cfg.CORS_ORIGINS or ["http://localhost:3000"])
+        else cfg.CORS_ORIGINS
     )
     app.add_middleware(
         CORSMiddleware,

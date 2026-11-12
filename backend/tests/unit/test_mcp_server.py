@@ -21,6 +21,26 @@ async def mcp_container() -> AsyncGenerator[Container, None]:
         STORAGE_BACKEND="local",
         LOCAL_STORAGE_DIR="./test_storage_mcp",
         INFERENCE_ENGINE_TYPE="fake",
+        DEFAULT_SEED_VOICES=[
+            {
+                "id": "voice-sophea-built-in",
+                "name": "Sophea (Test Female)",
+                "language": "km-KH",
+                "description": "Test female voice",
+            },
+            {
+                "id": "voice-dara-built-in",
+                "name": "Dara (Test Male)",
+                "language": "km-KH",
+                "description": "Test male voice",
+            },
+            {
+                "id": "voice-alex-built-in",
+                "name": "Alex (Test Neutral)",
+                "language": "en-US",
+                "description": "Test English voice",
+            },
+        ],
     )
     container = Container(settings)
     await container.initialize()

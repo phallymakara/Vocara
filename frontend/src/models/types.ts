@@ -55,6 +55,46 @@ export interface JobItem {
   updated_at?: string;
 }
 
+export interface DailyUsagePoint {
+  date: string;
+  characters: number;
+  requests: number;
+  duration_seconds: number;
+}
+
+export interface OperationUsagePoint {
+  operation: string;
+  requests: number;
+  characters: number;
+  duration_seconds: number;
+}
+
+export interface MonthlyUsagePoint {
+  month: number;
+  characters: number;
+  requests: number;
+  duration_seconds: number;
+}
+
+export interface HourlyUsagePoint {
+  hour: number;
+  characters: number;
+  requests: number;
+  duration_seconds: number;
+}
+
+export interface ApiKeyUsagePoint {
+  api_key_id: string;
+  name: string;
+  key_prefix: string;
+  status: string;
+  rate_limit_per_minute: number;
+  char_quota_per_month: number;
+  requests: number;
+  characters: number;
+  duration_seconds: number;
+}
+
 export interface UsageSummary {
   owner_id: string;
   year: number;
@@ -63,6 +103,14 @@ export interface UsageSummary {
   total_quota: number;
   quota_remaining: number;
   quota_percentage_used: number;
+  total_requests?: number;
+  total_audio_seconds?: number;
+  daily_usage?: DailyUsagePoint[];
+  by_operation?: OperationUsagePoint[];
+  monthly_usage?: MonthlyUsagePoint[];
+  hourly_usage?: HourlyUsagePoint[];
+  hourly_by_date?: Record<string, HourlyUsagePoint[]>;
+  by_api_key?: ApiKeyUsagePoint[];
 }
 
 export interface WebhookSubscription {
@@ -96,5 +144,21 @@ export interface SystemAudioFormat {
   mime_type: string;
   sample_rate: number;
   description: string;
+}
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  name: string;
+  avatar_url?: string | null;
+  plan: string;
+  has_google: boolean;
+}
+
+export interface AuthSessionResponse {
+  access_token: string;
+  token_type: string;
+  user: UserProfile;
+  default_api_key?: string | null;
 }
 

@@ -1,50 +1,20 @@
-import { useState, useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import { apiClient, ApiError } from "@/controllers/apiClient";
-import type { VoiceItem, JobItem, SystemLanguage } from "@/models/types";
+import { useTTSContext } from "@/controllers/TTSContext";
 
 export function useTTSController() {
   const [searchParams, setSearchParams] = useSearchParams();
   const voiceParam = searchParams.get("voice");
-
-  const [text, setText] = useState<string>("");
-  const [voices, setVoices] = useState<VoiceItem[]>([]);
-  const [languages, setLanguages] = useState<SystemLanguage[]>([]);
-  const [selectedVoiceId, setSelectedVoiceIdState] = useState<string>(voiceParam || "");
-  const [language, setLanguage] = useState<string>("km-KH");
-  const [speed, setSpeed] = useState<number>(1.0);
-  const [outputFormat, setOutputFormat] = useState<"mp3" | "wav" | "flac">("mp3");
-
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [generatedAudioUrl, setGeneratedAudioUrl] = useState<string | null>(null);
-  const [audioDuration, setAudioDuration] = useState<number>(0);
-  const [activeJob, setActiveJob] = useState<JobItem | null>(null);
-
-  const [textError, setTextError] = useState<string | null>(null);
-  const [voiceError, setVoiceError] = useState<string | null>(null);
-  const [generalError, setGeneralError] = useState<string | null>(null);
-
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const activeUrlRef = useRef<string | null>(null);
+  const ctx = useTTSContext();
 
   useEffect(() => {
-    return () => {
-      abortControllerRef.current?.abort();
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-      }
-      if (activeUrlRef.current) {
-        URL.revokeObjectURL(activeUrlRef.current);
-      }
-    };
-  }, []);
-
-  const charCount = text.length;
-  const isAsyncMode = charCount >= 250;
+    if (voiceParam) {
+      ctx.selectVoiceFromParam(voiceParam);
+    }
+  }, [voiceParam, ctx.voices]);
 
   const setSelectedVoiceId = (id: string) => {
-    setSelectedVoiceIdState(id);
+    ctx.setSelectedVoiceId(id);
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       if (id) {
@@ -56,215 +26,8 @@ export function useTTSController() {
     });
   };
 
-  useEffect(() => {
-    if (voiceParam && voices.length > 0) {
-      const matched = voices.find((v) => v.id === voiceParam);
-      if (matched) {
-        setSelectedVoiceIdState(matched.id);
-        if (matched.language) {
-          setLanguage(matched.language);
-        }
-      }
-    }
-  }, [voiceParam, voices]);
-
-  useEffect(() => {
-    loadVoices();
-    loadLanguages();
-  }, []);
-
-  const loadLanguages = async () => {
-    try {
-      const langs = await apiClient.getLanguages();
-      setLanguages(langs);
-      const matched = langs.find((l) => l.code.toLowerCase() === language.toLowerCase()) || langs[0];
-      if (matched?.default_preview_text) {
-        setText((prev) => (prev ? prev : matched.default_preview_text || ""));
-      }
-    } catch {
-      // Ignored if unauthenticated
-    }
-  };
-
-  useEffect(() => {
-    if (languages.length > 0 && !text) {
-      const matched = languages.find((l) => l.code.toLowerCase() === language.toLowerCase());
-      if (matched?.default_preview_text) {
-        setText(matched.default_preview_text);
-      }
-    }
-  }, [language, languages]);
-
-  const loadVoices = async () => {
-    try {
-      const data = await apiClient.listVoices();
-      setVoices(data);
-      if (data.length > 0) {
-        if (voiceParam && data.some((v) => v.id === voiceParam)) {
-          setSelectedVoiceIdState(voiceParam);
-        } else if (!selectedVoiceId) {
-          setSelectedVoiceIdState(data[0].id);
-        }
-      }
-    } catch {
-      // Ignored if unauthenticated
-    }
-  };
-
-  const clearActiveGeneration = () => {
-    abortControllerRef.current?.abort();
-    abortControllerRef.current = null;
-    if (pollIntervalRef.current) {
-      clearInterval(pollIntervalRef.current);
-      pollIntervalRef.current = null;
-    }
-  };
-
-  const stopGeneration = () => {
-    clearActiveGeneration();
-    setIsLoading(false);
-  };
-
-  const synthesize = async () => {
-    setTextError(null);
-    setVoiceError(null);
-    setGeneralError(null);
-
-    if (!apiClient.getApiKey()) {
-      setGeneralError("Please set an API key before generating speech.");
-      return;
-    }
-
-    if (!text.trim()) {
-      setTextError("Please enter text to synthesize.");
-      return;
-    }
-
-    if (!selectedVoiceId) {
-      setVoiceError("Please select a voice profile.");
-      return;
-    }
-
-    clearActiveGeneration();
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-
-    setIsLoading(true);
-    if (activeUrlRef.current) {
-      URL.revokeObjectURL(activeUrlRef.current);
-      activeUrlRef.current = null;
-    }
-    setGeneratedAudioUrl(null);
-    setActiveJob(null);
-
-    try {
-      const result = await apiClient.synthesizeSpeech(
-        {
-          text,
-          voice_id: selectedVoiceId,
-          language,
-          speed,
-          output_format: outputFormat,
-        },
-        controller.signal
-      );
-
-      if (controller.signal.aborted) return;
-
-      if (result.type === "stream") {
-        const url = URL.createObjectURL(result.audioBlob);
-        activeUrlRef.current = url;
-        setGeneratedAudioUrl(url);
-        setAudioDuration(result.duration);
-        setIsLoading(false);
-        abortControllerRef.current = null;
-      } else if (result.type === "job") {
-        setActiveJob(result.job);
-        pollJob(result.job.id, controller);
-      }
-    } catch (err: unknown) {
-      if (err instanceof DOMException && err.name === "AbortError") {
-        setIsLoading(false);
-        return;
-      }
-      setIsLoading(false);
-      abortControllerRef.current = null;
-      if (err instanceof ApiError) {
-        if (err.fieldErrors?.text) {
-          setTextError(err.fieldErrors.text);
-        } else if (err.fieldErrors?.voice_id) {
-          setVoiceError(err.fieldErrors.voice_id);
-        } else {
-          setGeneralError(err.message);
-        }
-      } else {
-        setGeneralError("Could not generate audio. Please check your connection.");
-      }
-    }
-  };
-
-  const pollJob = (jobId: string, controller: AbortController) => {
-    pollIntervalRef.current = setInterval(async () => {
-      if (controller.signal.aborted) {
-        if (pollIntervalRef.current) {
-          clearInterval(pollIntervalRef.current);
-          pollIntervalRef.current = null;
-        }
-        return;
-      }
-      try {
-        const job = await apiClient.getJob(jobId, controller.signal);
-        setActiveJob(job);
-
-        if (job.status === "completed") {
-          clearActiveGeneration();
-          const blob = await apiClient.getJobResultBlob(job.id, controller.signal);
-          const url = URL.createObjectURL(blob);
-          activeUrlRef.current = url;
-          setGeneratedAudioUrl(url);
-          setAudioDuration(job.audio_duration_seconds);
-          setIsLoading(false);
-        } else if (job.status === "failed") {
-          clearActiveGeneration();
-          setIsLoading(false);
-          setGeneralError(job.error_message || "The synthesis job could not be completed.");
-        }
-      } catch (err: unknown) {
-        clearActiveGeneration();
-        setIsLoading(false);
-        if (!(err instanceof DOMException && err.name === "AbortError")) {
-          setGeneralError("Failed to check job progress.");
-        }
-      }
-    }, 1500);
-  };
-
   return {
-    text,
-    setText,
-    voices,
-    languages,
-    selectedVoiceId,
+    ...ctx,
     setSelectedVoiceId,
-    language,
-    setLanguage,
-    speed,
-    setSpeed,
-    outputFormat,
-    setOutputFormat,
-    isLoading,
-    generatedAudioUrl,
-    audioDuration,
-    activeJob,
-    charCount,
-    isAsyncMode,
-    textError,
-    setTextError,
-    voiceError,
-    setVoiceError,
-    generalError,
-    synthesize,
-    stopGeneration,
-    hasApiKey: Boolean(apiClient.getApiKey()),
   };
 }

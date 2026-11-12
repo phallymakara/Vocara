@@ -8,6 +8,10 @@ export function useVoiceController() {
   const [voices, setVoices] = useState<VoiceItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [filterLang, setFilterLangState] = useState<string>(() => searchParams.get("lang") || "all");
+  const [filterGender, setFilterGenderState] = useState<string>(() => {
+    const g = (searchParams.get("gender") || "").toLowerCase();
+    return g === "male" || g === "female" ? g : "all";
+  });
 
   // Active modal ("clone" | "design" | "edit" | null)
   const [activeModal, setActiveModal] = useState<"clone" | "design" | "edit" | null>(() => {
@@ -145,9 +149,10 @@ export function useVoiceController() {
     invalidateDesignPreview();
   };
 
-  // Synchronize modal state and language filter with URL search parameters
+  // Synchronize modal state and filters with URL search parameters
   const actionParam = searchParams.get("action");
   const langParam = searchParams.get("lang");
+  const genderParam = searchParams.get("gender");
 
   useEffect(() => {
     if (actionParam === "clone") {
@@ -167,6 +172,15 @@ export function useVoiceController() {
     }
   }, [langParam]);
 
+  useEffect(() => {
+    const normalized = (genderParam || "").toLowerCase();
+    if (normalized === "male" || normalized === "female") {
+      setFilterGenderState(normalized);
+    } else {
+      setFilterGenderState("all");
+    }
+  }, [genderParam]);
+
   const setFilterLang = (lang: string) => {
     setFilterLangState(lang);
     setSearchParams((prev) => {
@@ -175,6 +189,19 @@ export function useVoiceController() {
         next.delete("lang");
       } else {
         next.set("lang", lang);
+      }
+      return next;
+    });
+  };
+
+  const setFilterGender = (gender: string) => {
+    setFilterGenderState(gender);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (gender === "all") {
+        next.delete("gender");
+      } else {
+        next.set("gender", gender);
       }
       return next;
     });
@@ -494,6 +521,7 @@ export function useVoiceController() {
         description: editDescription.trim(),
         visibility: editVisibility,
         modifiers: {
+          ...(editingVoice.modifiers || {}),
           pitch: editPitch,
           speed: editSpeed,
         },
@@ -565,8 +593,14 @@ export function useVoiceController() {
   };
 
   const filteredVoices = voices.filter((v) => {
-    if (filterLang === "all") return true;
-    return v.language.toLowerCase().includes(filterLang.toLowerCase());
+    if (filterLang !== "all" && !v.language.toLowerCase().includes(filterLang.toLowerCase())) {
+      return false;
+    }
+    if (filterGender !== "all") {
+      const gender = String(v.modifiers?.gender ?? "").trim().toLowerCase();
+      if (gender !== filterGender) return false;
+    }
+    return true;
   });
 
   return {
@@ -575,6 +609,8 @@ export function useVoiceController() {
     isLoading,
     filterLang,
     setFilterLang,
+    filterGender,
+    setFilterGender,
     activeModal,
     setActiveModal,
     openCloneModal,
